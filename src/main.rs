@@ -52,24 +52,30 @@ struct Image {
     location: String,
 }
 
-fn load_images(image_json_path: &str, not_used_images: &mut Vec<usize>) -> Vec<Image> {
-    let len = not_used_images.len();
+#[derive(Serialize, Deserialize, Debug)]
+struct ImagesLeft{
+    total_amount: usize,
+    unused: Vec<usize>,
+}
 
+fn load_images(image_json_path: &str, not_used_images: &mut ImagesLeft) -> Vec<Image> {
     let images_json = reqwest::blocking::get(image_json_path).expect("Unable to get images.json").text().expect("Unable parse images.json as text");
     let images: Vec<Image> = serde_json::from_str(&images_json).unwrap();
 
-    if len < images.len() {
-        for i in len..images.len() {
-            not_used_images.push(i);
+    if not_used_images.total_amount < images.len() {
+        for i in not_used_images.total_amount..images.len() {
+            not_used_images.unused.push(i);
         }
     }
-    if len > images.len() {
+    if not_used_images.total_amount > images.len() {
         eprintln!("Config has fewer images than before, resetting not_used_images");
-        not_used_images.clear();
+        not_used_images.unused.clear();
         for i in 0..images.len() {
-            not_used_images.push(i);
+            not_used_images.unused.push(i);
         }
     }
+
+    not_used_images.total_amount = images.len();
 
     images
 }
@@ -94,12 +100,12 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
     }
 }
 
-fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Vec<usize>){
+fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut ImagesLeft){
     let rng = &mut rand::thread_rng();
-    let image_id = match not_used_images.is_empty() {
+    let image_id = match not_used_images.unused.is_empty() {
         true => rng.gen_range(0..images.len()) as usize,
         false => {
-            not_used_images.remove(rng.gen_range(0..not_used_images.len()))
+            not_used_images.unused.remove(rng.gen_range(0..not_used_images.unused.len()))
         },
     };
 
@@ -167,7 +173,7 @@ fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Vec<u
     };
 }
 
-fn save_unused_images_ids(not_used_images: &mut Vec<usize>, app_config: &Config) {
+fn save_unused_images_ids(not_used_images: &mut ImagesLeft, app_config: &Config) {
     match File::create(app_config.not_used_images_log_location.clone()){
         Ok(mut file) => {
             file.write_all(serde_json::to_string(&not_used_images).unwrap().as_bytes()).unwrap();
@@ -191,17 +197,27 @@ fn main() {
     let mut app_config: Config = serde_json::from_str(&app_config).expect("Unable to parse config.json");
     app_config.times.sort_unstable();
 
-    let mut not_used_images: Vec<usize> = Vec::new();
-
-    if let Ok(file) = File::open(app_config.not_used_images_log_location.clone()){
-        let reader = BufReader::new(file);
-        not_used_images = match serde_json::from_reader(reader){
-            Ok(res) => res,
-            Err(e) => {
-                eprintln!("Unable to parse not_used_images_log: {}", e);
-                Vec::new()
-            },
+    let mut not_used_images = match File::open(app_config.not_used_images_log_location.clone()){
+        Ok(file) => {
+            let reader = BufReader::new(file);
+            match serde_json::from_reader(reader){
+                Ok(res) => res,
+                Err(e) => {
+                    eprintln!("Unable to parse not_used_images_log: {}", e);
+                    ImagesLeft{
+                        total_amount: 0,
+                        unused: Vec::new(),
+                    }
+                },
+            }
+        },
+        Err(_) => {
+            ImagesLeft{
+                total_amount: 0,
+                unused: Vec::new(),
+            }
         }
+        
     };
 
     let mut images = load_images(&app_config.image_json, &mut not_used_images);
