@@ -100,7 +100,7 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
     }
 }
 
-fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut ImagesLeft){
+fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut ImagesLeft) -> Result<usize, ()> {
     let rng = &mut rand::thread_rng();
     let image_id = match not_used_images.unused.is_empty() {
         true => rng.gen_range(0..images.len()) as usize,
@@ -113,7 +113,7 @@ fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Image
         Ok(image) => image,
         Err(e) => {
             eprintln!("Unable to get image {}: {}", images[image_id].location, e);
-            return;
+            return Err(());
         },
     };
 
@@ -135,7 +135,7 @@ fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Image
         Ok(response) => response,
         Err(e) => {
             eprintln!("Unable to post image to /api/v1/media: {}", e);
-            return;
+            return Err(());
         },
     };
 
@@ -143,7 +143,7 @@ fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Image
         Ok(media_json) => media_json,
         Err(e) => {
             eprintln!("Unable to parse media json: {}", e);
-            return;
+            return Err(());
         },
     };
 
@@ -151,7 +151,7 @@ fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Image
         Some(media_id) => media_id.to_string(),
         None => {
             eprintln!("Unable to get media id");
-            return;
+            return Err(());
         },
     };
 
@@ -171,6 +171,8 @@ fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Image
     if let Err(e) = response {
         eprintln!("Unable to post image to /api/v1/media: {}", e);
     };
+
+    Ok(image_id)
 }
 
 fn save_unused_images_ids(not_used_images: &mut ImagesLeft, app_config: &Config) {
@@ -238,12 +240,15 @@ fn main() {
         }
 
         if next_time < Local::now() {
-            post_image(&app_config, &images, &mut not_used_images);
+            let id = post_image(&app_config, &images, &mut not_used_images);
             next_time = get_next_time(next_time, &app_config);
 
-            println!("Posted image at {}, next at {}", Local::now(), next_time);
+            if let Ok(id) = id {
+                println!("Image id {} posted at {}, next at {}", id, Local::now(), next_time);
 
-            save_unused_images_ids(&mut not_used_images, &app_config);
+                save_unused_images_ids(&mut not_used_images, &app_config);
+            }
+            
         }
         
         thread::sleep(time::Duration::from_secs(30));
