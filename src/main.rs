@@ -1,5 +1,5 @@
 use core::time;
-use std::{fs::{self, File}, env, thread, time::Instant, io::{Write, BufReader}, process::{exit, self}};
+use std::{fs::{self, File}, env, thread, time::Instant, io::{Write, BufReader}};
 
 use rand::{Rng};
 use serde::{de::Error, Serialize, Deserialize, Deserializer};
