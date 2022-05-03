@@ -1,5 +1,5 @@
 use core::time;
-use std::{fs::{self, File}, env, thread, time::Instant, io::{Write, BufReader}};
+use std::{fs::{self, File}, env, thread, time::Instant, io::{Write, BufReader}, process::{exit, self}};
 
 use rand::{Rng};
 use serde::{de::Error, Serialize, Deserialize, Deserializer};
@@ -8,6 +8,8 @@ use chrono::{Utc, DateTime, TimeZone, Local};
 
 use reqwest::blocking::multipart::{self, Part};
 use serde_json::Value;
+
+use anyhow::{anyhow, Result};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Config {
@@ -58,9 +60,21 @@ struct ImagesLeft{
     unused: Vec<usize>,
 }
 
-fn load_images(image_json_path: &str, not_used_images: &mut ImagesLeft) -> Vec<Image> {
-    let images_json = reqwest::blocking::get(image_json_path).expect("Unable to get images.json").text().expect("Unable parse images.json as text");
-    let images: Vec<Image> = serde_json::from_str(&images_json).unwrap();
+fn load_images(image_json_path: &str, not_used_images: &mut ImagesLeft) -> Result<Vec<Image>> {
+    let result = match reqwest::blocking::get(image_json_path){
+        Ok(result) => result,
+        Err(err) => return Err(anyhow!(err).context("Unable to get images json"))
+    };
+
+    let images_json = match result.text(){
+        Ok(images_json) => images_json,
+        Err(err) => return Err(anyhow!(err).context("Unable parse json as text"))
+    };
+
+    let images: Vec<Image> = match serde_json::from_str(&images_json){
+        Ok(images) => images,
+        Err(err) => return Err(anyhow!(err).context("Unable to parse images json"))
+    };
 
     if not_used_images.total_amount < images.len() {
         for i in not_used_images.total_amount..images.len() {
@@ -77,7 +91,7 @@ fn load_images(image_json_path: &str, not_used_images: &mut ImagesLeft) -> Vec<I
 
     not_used_images.total_amount = images.len();
 
-    images
+    Ok(images)
 }
 
 /// Return next closest time that is in the future given times in config.
@@ -222,7 +236,12 @@ fn main() {
         
     };
 
-    let mut images = load_images(&app_config.image_json, &mut not_used_images);
+    let mut images = match load_images(&app_config.image_json, &mut not_used_images){
+        Ok(images) => images,
+        Err(e) => {
+            panic!("Unable to load images: {}", e);
+        },
+    };
 
     save_unused_images_ids(&mut not_used_images, &app_config);
 
@@ -233,8 +252,13 @@ fn main() {
 
     loop {
         if image_config_refresh_time < Instant::now() {
-            image_config_refresh_time = Instant::now() + time::Duration::from_secs(60*60*12);
-            images = load_images(&app_config.image_json, &mut not_used_images);
+            image_config_refresh_time = Instant::now() + time::Duration::from_secs(60*60);  //Every hour
+            images = match load_images(&app_config.image_json, &mut not_used_images){
+                Ok(images) => images,
+                Err(e) => {
+                    panic!("Unable to load images: {}, continuing with old json", e);
+                },
+            };
 
             save_unused_images_ids(&mut not_used_images, &app_config);
         }
