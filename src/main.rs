@@ -96,6 +96,20 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap
         println!("Added {} new images", new);
     }
 
+    let mut removed = 0;
+    images_db.unused.retain(|hash| {
+        if !images.contains_key(hash) {
+            removed += 1;
+            false
+        } else {
+            true
+        }
+    });
+
+    if removed > 0 {
+        println!("Removed {} images not found in json", removed);
+    }
+
     Ok(images)
 }
 
