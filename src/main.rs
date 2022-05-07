@@ -1,5 +1,5 @@
 use core::time;
-use std::{fs::{self, File}, env, thread, time::Instant, io::{Write, BufReader}};
+use std::{fs::{self, File}, env, thread, time::Instant, io::{Write, BufReader}, collections::HashMap};
 
 use rand::{Rng};
 use serde::{de::Error, Serialize, Deserialize, Deserializer};
@@ -55,12 +55,18 @@ struct Image {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ImagesLeft{
-    total_amount: usize,
-    unused: Vec<usize>,
+struct ImageDB{
+    used: Vec<String>,
+    unused: Vec<String>,
 }
 
-fn load_images(image_json_path: &str, not_used_images: &mut ImagesLeft) -> Result<Vec<Image>> {
+impl ImageDB {
+    pub fn contains(&self, hash: &String) -> bool {
+        self.used.contains(hash) || self.unused.contains(hash)
+    }
+}
+
+fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap<String, Image>> {
     let result = match reqwest::blocking::get(image_json_path){
         Ok(result) => result,
         Err(err) => return Err(anyhow!(err).context("Unable to get images json"))
@@ -76,20 +82,19 @@ fn load_images(image_json_path: &str, not_used_images: &mut ImagesLeft) -> Resul
         Err(err) => return Err(anyhow!(err).context("Unable to parse images json"))
     };
 
-    if not_used_images.total_amount < images.len() {
-        for i in not_used_images.total_amount..images.len() {
-            not_used_images.unused.push(i);
-        }
-    }
-    if not_used_images.total_amount > images.len() {
-        eprintln!("Config has fewer images than before, resetting not_used_images");
-        not_used_images.unused.clear();
-        for i in 0..images.len() {
-            not_used_images.unused.push(i);
+    let images: HashMap<String, Image> = images.into_iter().map(|image| (format!("{:x}",md5::compute(&image.location)), image)).collect();
+
+    let mut new = 0;
+    for hash in images.keys() {
+        if !images_db.contains(hash){
+            images_db.unused.push(hash.to_owned());
+            new += 1;
         }
     }
 
-    not_used_images.total_amount = images.len();
+    if new > 0 {
+        println!("Added {} new images", new);
+    }
 
     Ok(images)
 }
@@ -114,24 +119,34 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
     }
 }
 
-fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut ImagesLeft) -> Result<usize, ()> {
+fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &mut ImageDB) -> Result<String, ()> {
     let rng = &mut rand::thread_rng();
-    let image_id = match not_used_images.unused.is_empty() {
-        true => rng.gen_range(0..images.len()) as usize,
+    let image_hash = match images_db.unused.is_empty() {
+        true => images_db.used.get(rng.gen_range(0..images_db.used.len())).unwrap().to_string(),
         false => {
-            not_used_images.unused.remove(rng.gen_range(0..not_used_images.unused.len()))
+            let hash = images_db.unused.remove(rng.gen_range(0..images_db.unused.len()));
+            images_db.used.push(hash.to_owned());
+            hash
         },
     };
 
-    let image = match reqwest::blocking::get(images[image_id].location.to_owned()){
-        Ok(image) => image,
-        Err(e) => {
-            eprintln!("Unable to get image {}: {}", images[image_id].location, e);
+    let image = match images.get(&image_hash){
+        Some(image) => image,
+        None => {
+            eprintln!("Can't find image with hash {}", image_hash);
             return Err(());
         },
     };
 
-    let bytes = image;
+    let response = match reqwest::blocking::get(image.location.to_owned()){
+        Ok(response) => response,
+        Err(e) => {
+            eprintln!("Unable to get image {}: {}", image.location, e);
+            return Err(());
+        },
+    };
+
+    let bytes = response;
 
     let part = Part::reader(bytes).file_name("image");
 
@@ -173,7 +188,7 @@ fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Image
          // Image id
          .text("media_ids[]", media_id);
 
-    if let Some(message) = images[image_id].msg.clone() {
+    if let Some(message) = image.msg.clone() {
         status_request = status_request.text("status", message);
     }
     
@@ -186,13 +201,13 @@ fn post_image(app_config: &Config, images: &[Image], not_used_images: &mut Image
         eprintln!("Unable to post image to /api/v1/media: {}", e);
     };
 
-    Ok(image_id)
+    Ok(image.location.to_owned())
 }
 
-fn save_unused_images_ids(not_used_images: &mut ImagesLeft, app_config: &Config) {
+fn save_unused_images_ids(image_db: &mut ImageDB, app_config: &Config) {
     match File::create(app_config.not_used_images_log_location.clone()){
         Ok(mut file) => {
-            file.write_all(serde_json::to_string(&not_used_images).unwrap().as_bytes()).unwrap();
+            file.write_all(serde_json::to_string(&image_db).unwrap().as_bytes()).unwrap();
         },
         Err(e) => {
             eprintln!("Unable to create not_used_images_log_location: {}", e);
@@ -220,16 +235,16 @@ fn main() {
                 Ok(res) => res,
                 Err(e) => {
                     eprintln!("Unable to parse not_used_images_log: {}", e);
-                    ImagesLeft{
-                        total_amount: 0,
+                    ImageDB{
+                        used: Vec::new(),
                         unused: Vec::new(),
                     }
                 },
             }
         },
         Err(_) => {
-            ImagesLeft{
-                total_amount: 0,
+            ImageDB{
+                used: Vec::new(),
                 unused: Vec::new(),
             }
         }
@@ -249,6 +264,7 @@ fn main() {
     let mut next_time = get_next_time(current_time, &app_config);
     let mut image_config_refresh_time = Instant::now() + time::Duration::from_secs(60*60*12);
 
+    println!("Next image will be at {}", next_time);
 
     loop {
         if image_config_refresh_time < Instant::now() {
