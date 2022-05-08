@@ -265,6 +265,10 @@ fn main() {
         
     };
 
+    if app_config.times.is_empty() {
+        panic!("Config has to contain at least one time");
+    }
+
     let mut images = match load_images(&app_config.image_json, &mut not_used_images){
         Ok(images) => images,
         Err(e) => {
