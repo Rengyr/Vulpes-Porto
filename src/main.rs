@@ -193,7 +193,7 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
     let media_id:String = match media_json["id"].as_str(){
         Some(media_id) => media_id.to_string(),
         None => {
-            eprintln!("Unable to get media id");
+            eprintln!("Unable to get media id: {:?}", media_json);
             return Err(());
         },
     };
