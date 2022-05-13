@@ -182,6 +182,11 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
         },
     };
 
+    if !response.status().is_success() {
+        eprintln!("Wrong status from media api: {}", response.status());
+        return Err(());
+    }
+
     let media_json: Value = match serde_json::from_str(&response.text().unwrap()) {
         Ok(media_json) => media_json,
         Err(e) => {
@@ -211,9 +216,18 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
        .multipart(status_request).send();
 
 
-    if let Err(e) = response {
-        eprintln!("Unable to post image to /api/v1/media: {}", e);
+    let response = match response {
+        Ok(response) => response,
+        Err(e) => {
+            eprintln!("Unable to post image to /api/v1/statuses: {}", e);
+            return Err(());
+        },
     };
+       
+    if !response.status().is_success() {
+        eprintln!("Wrong status from statuses api: {}", response.status());
+        return Err(());
+    }
 
     Ok(image.location.to_owned())
 }
