@@ -312,11 +312,12 @@ fn main() {
         }
 
         if next_time < Local::now() {
-            let id = post_image(&app_config, &images, &mut not_used_images);
+            let image = post_image(&app_config, &images, &mut not_used_images);
             next_time = get_next_time(next_time, &app_config);
 
-            if let Ok(id) = id {
-                println!("Image id {} posted at {}, next at {}", id, Local::now(), next_time);
+            if let Ok(id) = image {
+                println!("Image {} posted at {}, next at {}", id, Local::now(), next_time);
+                println!("{}/{} images left", not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
 
                 save_unused_images_ids(&mut not_used_images, &app_config);
             }
