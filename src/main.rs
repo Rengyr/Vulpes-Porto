@@ -330,6 +330,7 @@ fn main() {
     let mut image_config_refresh_time = Instant::now() + time::Duration::from_secs(60*60*12);
 
     println!("Next image will be at {}", next_time);
+    println!("{}/{} images left", not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
 
     loop {
         //Check if there are changes in image json
