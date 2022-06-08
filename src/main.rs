@@ -322,12 +322,7 @@ fn main() {
             match serde_json::from_reader(reader){
                 Ok(res) => res,
                 Err(e) => {
-                    eprintln!("Unable to parse not_used_images_log: {}", e);
-                    ImageDB{
-                        used: Vec::new(),
-                        unused: Vec::new(),
-                        random_deck: Vec::new(),
-                    }
+                    panic!("Unable to parse not_used_images_log: {}", e);
                 },
             }
         },
