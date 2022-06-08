@@ -62,6 +62,7 @@ struct Image {
 struct ImageDB{
     used: Vec<String>,
     unused: Vec<String>,
+    random_deck: Vec<String>,
 }
 
 impl ImageDB {
@@ -94,15 +95,15 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap
     //Calculate md5 hashes as keys for images
     let images: HashMap<String, Image> = images.into_iter().map(|image| (format!("{:x}",md5::compute(&image.location)), image)).collect();
 
-    //Add new images to unused list
+    //Add new images to unused list and random_deck
     let mut new = 0;
     for hash in images.keys() {
         if !images_db.contains(hash){
             images_db.unused.push(hash.to_owned());
+            images_db.random_deck.push(hash.to_owned());
             new += 1;
         }
     }
-
     if new > 0 {
         println!("Added {} new images", new);
     }
@@ -117,9 +118,22 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap
             true
         }
     });
-
     if removed > 0 {
         println!("Removed {} images not found in json", removed);
+    }
+
+    //Remove images that were removed from json from random deck
+    let mut removed_d = 0;
+    images_db.random_deck.retain(|hash| {
+        if !images.contains_key(hash) {
+            removed_d += 1;
+            false
+        } else {
+            true
+        }
+    });
+    if removed_d > 0 {
+        println!("Removed from random deck {} images not found in json", removed);
     }
 
     Ok(images)
@@ -157,13 +171,16 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
 fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &mut ImageDB) -> Result<String, ()> {
     let rng = &mut rand::thread_rng();
 
-    //Get random hash from unused if there is any else random
+    //Get random hash from unused if there is any else from random deck
     let image_hash = match images_db.unused.is_empty() {
-        true => images_db.used.get(rng.gen_range(0..images_db.used.len())).unwrap().to_string(),
+        true => {
+            if images_db.random_deck.is_empty() {
+                images_db.random_deck.append(&mut images_db.used.to_vec());
+            }
+            images_db.random_deck.get(rng.gen_range(0..images_db.random_deck.len())).unwrap().to_owned()
+        }
         false => {
-            let hash = images_db.unused.remove(rng.gen_range(0..images_db.unused.len()));
-            images_db.used.push(hash.to_owned());
-            hash
+            images_db.unused.get(rng.gen_range(0..images_db.unused.len())).unwrap().to_owned()
         },
     };
 
@@ -255,6 +272,19 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
         eprintln!("Wrong status from statuses api: {}", response.status());
         return Err(());
     }
+        
+    //Remove hash from the lists
+    match images_db.unused.is_empty() {
+        true => {
+            let pos = images_db.random_deck.iter().position(|hash| hash == &image_hash).unwrap();
+            images_db.random_deck.remove(pos);
+        }
+        false => {
+            let pos = images_db.unused.iter().position(|hash| hash == &image_hash).unwrap();
+            images_db.unused.remove(pos);
+            images_db.used.push(image_hash.to_owned());
+        },
+    };
 
     Ok(image.location.to_owned())
 }
@@ -296,6 +326,7 @@ fn main() {
                     ImageDB{
                         used: Vec::new(),
                         unused: Vec::new(),
+                        random_deck: Vec::new(),
                     }
                 },
             }
@@ -304,6 +335,7 @@ fn main() {
             ImageDB{
                 used: Vec::new(),
                 unused: Vec::new(),
+                random_deck: Vec::new(),
             }
         }
         
@@ -320,7 +352,6 @@ fn main() {
             panic!("Unable to load images: {}", e);
         },
     };
-
 
     save_images_ids(&mut not_used_images, &app_config);
 
