@@ -54,6 +54,7 @@ where
 #[derive(Serialize, Deserialize, Debug)]
 struct Image {
     msg: Option<String>,    //Optional message
+    alt: Option<String>,    //Optional alt text for image
     location: String,       //Link to hosted image
 }
 
@@ -209,9 +210,14 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
     let client = reqwest::blocking::Client::new();
 
     //Construct request to upload image to mastodon and get media id
-    let media_request = multipart::Form::new()
+    let mut media_request = multipart::Form::new()
         // Image
         .part("file", part);
+
+
+    if let Some(alt) = image.alt.clone() {
+        media_request = media_request.text("description", alt);
+    }
 
     let response = client.post(app_config.server.to_owned() + "/api/v1/media")
        .header("Authorization", "Bearer ".to_string() + app_config.token.to_string().as_str())
