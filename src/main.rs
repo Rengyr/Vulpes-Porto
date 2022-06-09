@@ -83,13 +83,13 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap
     //Parse json as text
     let images_json = match result.text(){
         Ok(images_json) => images_json,
-        Err(err) => return Err(anyhow!(err).context("Unable parse json as text"))
+        Err(err) => return Err(anyhow!(err).context("Unable parse web result as text"))
     };
 
     //Parse json to images
     let images: Vec<Image> = match serde_json::from_str(&images_json){
         Ok(images) => images,
-        Err(err) => return Err(anyhow!(err).context("Unable to parse images json"))
+        Err(err) => return Err(anyhow!(err).context("Unable to parse text as images json"))
     };
 
     //Calculate md5 hashes as keys for images
@@ -304,8 +304,8 @@ fn save_images_ids(image_db: &mut ImageDB, app_config: &Config) {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 2 {
-        println!("Usage: {} <config.json>", args[0]);
+    if args.len() < 2 {
+        println!("Usage: {} <config.json> [--now]", args[0]);
         return;
     }
 
@@ -348,7 +348,16 @@ fn main() {
         },
     };
 
-    save_images_ids(&mut not_used_images, &app_config);
+
+    //If --now argument is used to post image on start
+    if args.len() == 3 && args[2] == "--now" {
+        let image = post_image(&app_config, &images, &mut not_used_images);
+        if let Ok(id) = image {
+            println!("Image {} posted with --now at {}", id, Local::now());
+
+            save_images_ids(&mut not_used_images, &app_config);
+        }
+    }
 
     //Calculate next time for post and json refresh
     let current_time = Local::today().and_hms(0, 0, 0);
