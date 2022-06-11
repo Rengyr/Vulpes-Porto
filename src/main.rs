@@ -96,12 +96,11 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap
     //Calculate md5 hashes as keys for images
     let images: HashMap<String, Image> = images.into_iter().map(|image| (format!("{:x}",md5::compute(&image.location)), image)).collect();
 
-    //Add new images to unused list and random_deck
+    //Add new images to unused list
     let mut new = 0;
     for hash in images.keys() {
         if !images_db.contains(hash){
             images_db.unused.push(hash.to_owned());
-            images_db.random_deck.push(hash.to_owned());
             new += 1;
         }
     }
