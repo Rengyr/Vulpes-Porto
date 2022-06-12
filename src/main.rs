@@ -6,7 +6,7 @@ use serde::{de::Error, Serialize, Deserialize, Deserializer};
 
 use chrono::{Utc, DateTime, TimeZone, Local};
 
-use reqwest::blocking::multipart::{self, Part};
+use reqwest::{blocking::multipart::{self, Part}};
 use serde_json::Value;
 
 use anyhow::{anyhow, Result};
@@ -193,8 +193,19 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
         },
     };
 
+    //Make client for request
+    let client_media = match reqwest::blocking::Client::builder()
+        .user_agent("Vulpes Porto")
+        .build(){
+            Ok(client_media) => client_media,
+            Err(e) => {
+                eprintln!("Unable to make client for media request: {} for image {}", e, image.location);
+                return Err(());
+            },
+        };
+
     //Download image to cache
-    let response = match reqwest::blocking::get(image.location.to_owned()){
+    let response = match client_media.get(&image.location).send(){
         Ok(response) => response,
         Err(e) => {
             eprintln!("Unable to get image {}: {}", image.location, e);
@@ -232,6 +243,7 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
 
     if !response.status().is_success() {
         eprintln!("Wrong status from media api: {} for image {}", response.status(), image.location);
+        eprintln!("Response: {}", response.text().unwrap());
         return Err(());
     }
 
