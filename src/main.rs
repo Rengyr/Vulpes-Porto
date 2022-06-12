@@ -225,20 +225,20 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
     let response = match response {
         Ok(response) => response,
         Err(e) => {
-            eprintln!("Unable to post image to /api/v1/media: {}", e);
+            eprintln!("Unable to post image to /api/v1/media: {} for image {}", e, image.location);
             return Err(());
         },
     };
 
     if !response.status().is_success() {
-        eprintln!("Wrong status from media api: {}", response.status());
+        eprintln!("Wrong status from media api: {} for image {}", response.status(), image.location);
         return Err(());
     }
 
     let media_json: Value = match serde_json::from_str(&response.text().unwrap()) {
         Ok(media_json) => media_json,
         Err(e) => {
-            eprintln!("Unable to parse media json: {}", e);
+            eprintln!("Unable to parse media json: {} for image {}", e, image.location);
             return Err(());
         },
     };
@@ -246,7 +246,7 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
     let media_id:String = match media_json["id"].as_str(){
         Some(media_id) => media_id.to_string(),
         None => {
-            eprintln!("Unable to get media id: {:?}", media_json);
+            eprintln!("Unable to get media id: {:?} for image {}", media_json, image.location);
             return Err(());
         },
     };
@@ -268,13 +268,13 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
     let response = match response {
         Ok(response) => response,
         Err(e) => {
-            eprintln!("Unable to post image to /api/v1/statuses: {}", e);
+            eprintln!("Unable to post image to /api/v1/statuses: {} for image {}", e, image.location);
             return Err(());
         },
     };
        
     if !response.status().is_success() {
-        eprintln!("Wrong status from statuses api: {}", response.status());
+        eprintln!("Wrong status from statuses api: {} for image {}", response.status(), image.location);
         return Err(());
     }
         
