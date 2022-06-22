@@ -391,7 +391,8 @@ fn main() {
             images = match load_images(&app_config.image_json, &mut not_used_images){
                 Ok(images) => images,
                 Err(e) => {
-                    panic!("Unable to load images: {}, continuing with old json", e);
+                    eprintln!("Unable to load images: {}, continuing with old json", e);
+                    images  //Returning old data
                 },
             };
 
