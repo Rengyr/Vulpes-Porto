@@ -384,6 +384,9 @@ fn main() {
     println!("Next image will be at {}", next_time);
     println!("{}/{} images left", not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
 
+    let mut failed_to_post = false;
+    let mut failed_to_post_time = Instant::now();
+
     loop {
         //Check if there are changes in image json
         if image_config_refresh_time < Instant::now() {
@@ -400,7 +403,7 @@ fn main() {
         }
 
         //Check if it's time to post new image
-        if next_time < Local::now() {
+        if next_time < Local::now() || (failed_to_post && (Instant::now() - failed_to_post_time).as_secs() > 60*10){    //Try again after 10min if failed
             let image = post_image(&app_config, &images, &mut not_used_images);
             next_time = get_next_time(next_time, &app_config);
 
@@ -408,7 +411,12 @@ fn main() {
                 println!("Image {} posted at {}, next at {}", id, Local::now(), next_time);
                 println!("{}/{} images left", not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
 
+                failed_to_post = false;
                 save_images_ids(&mut not_used_images, &app_config);
+            }
+            else{
+                failed_to_post = true;
+                failed_to_post_time = Instant::now();
             }
             
         }
@@ -416,5 +424,5 @@ fn main() {
         //Sleep till next check
         thread::sleep(time::Duration::from_secs(30));
     }
-
+    
 }
