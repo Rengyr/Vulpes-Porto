@@ -242,6 +242,20 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
     };
 
     if !response.status().is_success() {
+        if response.status() == 404{
+            //Remove hash from the lists
+            match images_db.unused.is_empty() {
+                true => {
+                    let pos = images_db.random_deck.iter().position(|hash| hash == &image_hash).unwrap();
+                    images_db.random_deck.remove(pos);
+                }
+                false => {
+                    let pos = images_db.unused.iter().position(|hash| hash == &image_hash).unwrap();
+                    images_db.unused.remove(pos);
+                    images_db.used.push(image_hash.to_owned());
+                },
+            };
+        }
         eprintln!("Wrong status from media api: {} for image {}", response.status(), image.location);
         eprintln!("Response: {}", response.text().unwrap());
         return Err(());
