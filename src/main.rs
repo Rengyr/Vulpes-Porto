@@ -74,7 +74,7 @@ impl ImageDB {
 }
 
 ///From link to json load new image and parse the results to ImageDB structure. Returns Hashmap with images with keys of md5 hashes or returns Error.
-fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap<String, Image>> {
+fn load_images(image_json_path: &str, images_db: &mut ImageDB, images_old: Option<&HashMap<String, Image>>) -> Result<HashMap<String, Image>> {
     //Get json file
     let result = match reqwest::blocking::get(image_json_path){
         Ok(result) => result,
@@ -136,7 +136,27 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap
         println!("Removed from random deck {} images not found in json", removed);
     }
 
-    
+    //Check if alt text or text of images changed and write notice to stdout
+    if let Some(images_old) = images_old{
+        let mut message_changed = 0;
+        let mut alt_changed = 0;
+        for image in &images{
+            if let Some(image_old) = images_old.get(image.0){
+                if image_old.msg != image.1.msg{
+                    message_changed += 1;
+                }
+                if image_old.alt != image.1.alt{
+                    alt_changed += 1;
+                }
+                if message_changed > 0 {
+                    println!("Text changed for {} images", message_changed);
+                }
+                if alt_changed > 0 {
+                    println!("Alt text changed for {} images", alt_changed);
+                }
+            }
+        }
+    }
 
     Ok(images)
 }
@@ -374,7 +394,7 @@ fn main() {
     }
 
     //Check for images in image json
-    let mut images = match load_images(&app_config.image_json, &mut not_used_images){
+    let mut images = match load_images(&app_config.image_json, &mut not_used_images, None){
         Ok(images) => images,
         Err(e) => {
             panic!("Unable to load images: {}", e);
@@ -407,27 +427,8 @@ fn main() {
         //Check if there are changes in image json
         if image_config_refresh_time < Instant::now() {
             image_config_refresh_time = Instant::now() + time::Duration::from_secs(60*60);  //Every hour
-            images = match load_images(&app_config.image_json, &mut not_used_images){
+            images = match load_images(&app_config.image_json, &mut not_used_images, Some(&images)){
                 Ok(images_new) => {
-                    let mut message_changed = 0;
-                    let mut alt_changed = 0;
-                    //Check if alt text or text of images changed and write notice to stdout
-                    for image_new in &images_new{
-                        if let Some(image_old) = images.get(image_new.0){
-                            if image_old.msg != image_new.1.msg{
-                                message_changed += 1;
-                            }
-                            if image_old.alt != image_new.1.alt{
-                                alt_changed += 1;
-                            }
-                            if message_changed > 0 {
-                                println!("Text changed for {} images", message_changed);
-                            }
-                            if alt_changed > 0 {
-                                println!("Alt text changed for {} images", alt_changed);
-                            }
-                        }
-                    }
                     images_new
                 }
                 Err(e) => {
