@@ -136,6 +136,8 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB) -> Result<HashMap
         println!("Removed from random deck {} images not found in json", removed);
     }
 
+    
+
     Ok(images)
 }
 
@@ -406,7 +408,28 @@ fn main() {
         if image_config_refresh_time < Instant::now() {
             image_config_refresh_time = Instant::now() + time::Duration::from_secs(60*60);  //Every hour
             images = match load_images(&app_config.image_json, &mut not_used_images){
-                Ok(images) => images,
+                Ok(images_new) => {
+                    let mut message_changed = 0;
+                    let mut alt_changed = 0;
+                    //Check if alt text or text of images changed and write notice to stdout
+                    for image_new in &images_new{
+                        if let Some(image_old) = images.get(image_new.0){
+                            if image_old.msg != image_new.1.msg{
+                                message_changed += 1;
+                            }
+                            if image_old.alt != image_new.1.alt{
+                                alt_changed += 1;
+                            }
+                            if message_changed > 0 {
+                                println!("Text changed for {} images", message_changed);
+                            }
+                            if alt_changed > 0 {
+                                println!("Alt text changed for {} images", alt_changed);
+                            }
+                        }
+                    }
+                    images_new
+                }
                 Err(e) => {
                     eprintln!("Unable to load images: {}, continuing with old json", e);
                     images  //Returning old data
