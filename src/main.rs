@@ -133,7 +133,7 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB, images_old: Optio
         }
     });
     if removed_d > 0 {
-        println!("Removed from random deck {} images not found in json", removed);
+        println!("Removed from random deck {} images not found in json", removed_d);
     }
 
     //Check if alt text or text of images changed and write notice to stdout
