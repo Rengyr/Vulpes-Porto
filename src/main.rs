@@ -190,7 +190,7 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
 }
 
 ///Send request for new media post to Mastodon server and return error is there is any.
-fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &mut ImageDB) -> Result<String, ()> {
+fn post_image<'a>(app_config: &'a Config, images: &'a HashMap<String, Image>, images_db: &'a mut ImageDB) -> Result<&'a Image, ()> {
     let rng = &mut rand::thread_rng();
 
     //Get random hash from unused if there is any else from random deck
@@ -339,7 +339,7 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
         },
     };
 
-    Ok(image.location.to_owned())
+    Ok(image)
 }
 
 ///Save used and unused images to file.
@@ -405,8 +405,8 @@ fn main() {
     //If --now argument is used to post image on start
     if args.len() == 3 && args[2] == "--now" {
         let image = post_image(&app_config, &images, &mut not_used_images);
-        if let Ok(id) = image {
-            println!("Image {} posted with --now at {}", id, Local::now());
+        if let Ok(image) = image {
+            println!("Image {} posted with --now at {}", image.location, Local::now());
 
             save_images_ids(&mut not_used_images, &app_config);
         }
@@ -445,8 +445,10 @@ fn main() {
             let image = post_image(&app_config, &images, &mut not_used_images);
             next_time = get_next_time(next_time, &app_config);
 
-            if let Ok(id) = image {
-                println!("Image {} posted at {}, next at {}", id, Local::now(), next_time);
+            if let Ok(image) = image {
+                println!("Image {} posted at {}, next at {}", image.location, Local::now(), next_time);
+                println!("Image text: {}", image.msg.to_owned().unwrap_or_default());
+                println!("Image alt text: {}", image.alt.to_owned().unwrap_or_default());
                 println!("{}/{} images left", not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
 
                 failed_to_post = false;
