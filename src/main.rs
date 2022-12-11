@@ -251,14 +251,14 @@ fn post_image(app_config: &Config, images: &HashMap<String, Image>, images_db: &
         media_request = media_request.text("description", alt);
     }
 
-    let response = client.post(app_config.server.to_owned() + "/api/v1/media")
+    let response = client.post(app_config.server.to_owned() + "/api/v2/media")
        .header("Authorization", "Bearer ".to_string() + app_config.token.to_string().as_str())
        .multipart(media_request).send();
     
     let response = match response {
         Ok(response) => response,
         Err(e) => {
-            eprintln!("Unable to post image to /api/v1/media: {} for image {}", e, image.location);
+            eprintln!("Unable to post image to /api/v2/media: {} for image {}", e, image.location);
             return Err(());
         },
     };
