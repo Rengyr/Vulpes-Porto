@@ -190,7 +190,7 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
 }
 
 ///Send request for new media post to Mastodon server and return error is there is any.
-fn post_image<'a>(app_config: &'a Config, images: &'a HashMap<String, Image>, images_db: &'a mut ImageDB) -> Result<&'a Image, ()> {
+fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, images_db: &mut ImageDB) -> Result<&'a Image, ()> {
     let rng = &mut rand::thread_rng();
 
     //Get random hash from unused if there is any else from random deck
