@@ -164,6 +164,7 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB, images_old: Optio
 /// Return next closest time that is in the future given times in config or current time + 1 day if no times are configured.
 /// 
 /// Times in config has to be sorted.
+#[allow(deprecated)]
 fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> DateTime<Tz>{
     if config.times.is_empty() {
         return date_time + chrono::Duration::days(1);
@@ -174,18 +175,22 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
 
     //Loop until time is found
     loop {
-
         //Try all times in the config
         for (hours, minutes) in config.times.iter() {
-            new_date_time = new_date_time.date().and_hms(*hours as u32,*minutes as u32, 0);
-
+            new_date_time = match new_date_time.date().and_hms_opt(hours.to_owned() as u32, minutes.to_owned() as u32, 0){
+                Some(new_date_time) => new_date_time,
+                None => {
+                    panic!("Invalid hours or minutes in the configuration")
+                },
+            };
+            
             if date_now < new_date_time {
                 return new_date_time;
             }
         }
 
         //Add one day if no time in config is in the future for current day
-        new_date_time = new_date_time + chrono::Duration::days(1);
+        new_date_time += chrono::Duration::days(1);
     }
 }
 
@@ -413,7 +418,7 @@ fn main() {
     }
 
     //Calculate next time for post and json refresh
-    let current_time = Local::today().and_hms(0, 0, 0);
+    let current_time = Local::now();
     let mut next_time = get_next_time(current_time, &app_config);
     let mut image_config_refresh_time = Instant::now() + time::Duration::from_secs(60*60);
 
