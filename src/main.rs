@@ -13,8 +13,8 @@ use serde_json::Value;
 use anyhow::{anyhow, Result};
 
 static SYSTEMD_ERROR:OnceCell<String> = OnceCell::new();
+static SYSTEMD_NOTICE:OnceCell<String> = OnceCell::new();
 static SYSTEMD_INFO:OnceCell<String> = OnceCell::new();
-static SYSTEMD_DEBUG:OnceCell<String> = OnceCell::new();
 
 ///Structure holding configuration of the bot
 #[derive(Serialize, Deserialize, Debug)]
@@ -110,7 +110,7 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB, images_old: Optio
         }
     }
     if new > 0 {
-        println!("{}Added {} new images", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), new);
+        println!("{}Added {} new images", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), new);
     }
 
     //Remove images that were removed from json from the unused list
@@ -124,7 +124,7 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB, images_old: Optio
         }
     });
     if removed > 0 {
-        println!("{}Removed {} images not found in json", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), removed);
+        println!("{}Removed {} images not found in json", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), removed);
     }
 
     //Remove images that were removed from json from random deck
@@ -138,7 +138,7 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB, images_old: Optio
         }
     });
     if removed_d > 0 {
-        println!("{}Removed from random deck {} images not found in json", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), removed_d);
+        println!("{}Removed from random deck {} images not found in json", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), removed_d);
     }
 
     //Check if alt text or text of images changed and write notice to stdout
@@ -154,10 +154,10 @@ fn load_images(image_json_path: &str, images_db: &mut ImageDB, images_old: Optio
                     alt_changed += 1;
                 }
                 if message_changed > 0 {
-                    println!("{}Text changed for {} images", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), message_changed);
+                    println!("{}Text changed for {} images", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), message_changed);
                 }
                 if alt_changed > 0 {
-                    println!("{}Alt text changed for {} images", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), alt_changed);
+                    println!("{}Alt text changed for {} images", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), alt_changed);
                 }
             }
         }
@@ -377,15 +377,15 @@ fn main() {
         //Set systemd output style
         if arg == "--systemd" {
             let _ = SYSTEMD_ERROR.set("<3>".to_string());
+            let _ = SYSTEMD_NOTICE.set("<5>".to_string());
             let _ = SYSTEMD_INFO.set("<6>".to_string());
-            let _ = SYSTEMD_DEBUG.set("<7>".to_string());
         }
     }
 
     //Set default value if it wasn't set before, we don't care if it fails from being already set
     let _ = SYSTEMD_ERROR.set("".to_string());
+    let _ = SYSTEMD_NOTICE.set("".to_string());
     let _ = SYSTEMD_INFO.set("".to_string());
-    let _ = SYSTEMD_DEBUG.set("".to_string());
     
     //Load bot configuration
     let app_config = fs::read_to_string(&args[1]).unwrap_or_else(|_| panic!("{}Couldn't find config.json file", SYSTEMD_ERROR.get().unwrap_or(&"".to_string())));
@@ -433,7 +433,7 @@ fn main() {
         if arg == "--now" {
             let image = post_image(&app_config, &images, &mut not_used_images);
             if let Ok(image) = image {
-                println!("{}Image {} posted with --now at {}", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), image.location, Local::now());
+                println!("{}Image {} posted with --now at {}", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), image.location, Local::now());
 
                 save_images_ids(&mut not_used_images, &app_config);
             }
@@ -445,8 +445,8 @@ fn main() {
     let mut next_time = get_next_time(current_time, &app_config);
     let mut image_config_refresh_time = Instant::now() + time::Duration::from_secs(60*60);
 
-    println!("{}Next image will be at {}", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), next_time);
-    println!("{}{}/{} images left", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
+    println!("{}Next image will be at {}", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), next_time);
+    println!("{}{}/{} images left", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
 
     let mut failed_to_post = false;
     let mut failed_to_post_time = Instant::now();
@@ -474,10 +474,10 @@ fn main() {
             next_time = get_next_time(next_time, &app_config);
 
             if let Ok(image) = image {
-                println!("{}Image {} posted at {}, next at {}", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), image.location, Local::now(), next_time);
-                println!("{}Image text: {}", SYSTEMD_DEBUG.get().unwrap_or(&"".to_string()), image.msg.to_owned().unwrap_or_default());
-                println!("{}Image alt text: {}", SYSTEMD_DEBUG.get().unwrap_or(&"".to_string()), image.alt.to_owned().unwrap_or_default());
-                println!("{}{}/{} images left", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
+                println!("{}Image {} posted at {}, next at {}", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), image.location, Local::now(), next_time);
+                println!("{}Image text: {}", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), image.msg.to_owned().unwrap_or_default());
+                println!("{}Image alt text: {}", SYSTEMD_INFO.get().unwrap_or(&"".to_string()), image.alt.to_owned().unwrap_or_default());
+                println!("{}{}/{} images left", SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len());
 
                 failed_to_post = false;
                 save_images_ids(&mut not_used_images, &app_config);
