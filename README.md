@@ -3,7 +3,11 @@ Dominik 'Rengyr' Kosík, <mail@rengyr.eu>
 
 Mastodon bot to post remotely hosted photos daily at set times. The bot will prioritize images that weren't yet posted. In case of exhaustion of new photos the bot will post random photo from the pool.
 
-The bot takes one mandatory argument which is the location of the configuration json file and this needs to be first argument. The bot supports option --now in second position that will cause the bot to post one image on start-up and then continue based on the schedule in the configuration json file.
+The bot takes one mandatory argument which is the location of the configuration json file and this needs to be first argument. The bot supports  two optional options:
+
+`--now` that will cause the bot to post one image on start-up and then continue based on the schedule in the configuration json file
+
+`--systemd` that will prefix the output messages with log levels according to Linux syslog specification. The levels used are err, notice and info
 
 Example of starting bot:
 ```
