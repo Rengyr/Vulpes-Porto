@@ -327,7 +327,7 @@ fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, image
     }
 
     //Add message to the posted image if there is something
-    if message.is_empty() {
+    if !message.is_empty() {
         status_request = status_request.text("status", message);
     }
 
