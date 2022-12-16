@@ -3,5 +3,6 @@
 	"token": "BZohmwJu YOUR ACCOUN TOKEN MmQ50lTk8",
 	"image_json": "https://yourpage/sub/sources.json",
 	"times": ["8:00"],
-	"not_used_images_log_location": "./unused.log"
+	"not_used_images_log_location": "./unused.log",
+	"tags": "#Bot  //optional setting"
 }
