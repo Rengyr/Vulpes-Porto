@@ -24,7 +24,8 @@ struct Config {
     image_json: String,
     not_used_images_log_location: String,
     #[serde(deserialize_with = "from_string_time")]
-    times: Vec<(u8,u8)>
+    times: Vec<(u8,u8)>,
+    tags: Option<String>
 }
 
 fn from_string_time<'de, D>(deserializer: D) -> Result<Vec<(u8,u8)>, D::Error>
@@ -314,10 +315,22 @@ fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, image
          // Image id
          .text("media_ids[]", media_id);
 
-    if let Some(message) = image.msg.clone() {
+    //Get the message on the image or default ""
+    let mut message = image.msg.clone().unwrap_or_default();
+
+    //If tags are specified then add tags after new line if message is not empty
+    if let Some(tags) = app_config.tags.as_ref(){
+        if !message.is_empty() {
+            message += "\n";
+        }
+        message += tags;
+    }
+
+    //Add message to the posted image if there is something
+    if message.is_empty() {
         status_request = status_request.text("status", message);
     }
-    
+
     let response = client.post(app_config.server.to_owned() + "/api/v1/statuses")
        .header("Authorization", "Bearer ".to_string() + app_config.token.to_string().as_str())
        .multipart(status_request).send();
