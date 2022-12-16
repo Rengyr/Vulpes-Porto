@@ -320,7 +320,7 @@ fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, image
 
     //If tags are specified then add tags after new line if message is not empty
     if let Some(tags) = app_config.tags.as_ref(){
-        if !message.is_empty() {
+        if !message.is_empty() && !tags.is_empty(){
             message += "\n";
         }
         message += tags;
