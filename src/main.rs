@@ -195,20 +195,20 @@ fn load_images(
                     alt_changed += 1;
                 }
             }
-            if message_changed > 0 {
-                println!(
-                    "{}Text changed for {} images",
-                    SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-                    message_changed
-                );
-            }
-            if alt_changed > 0 {
-                println!(
-                    "{}Alt text changed for {} images",
-                    SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-                    alt_changed
-                );
-            }
+        }
+        if message_changed > 0 {
+            println!(
+                "{}Text changed for {} images",
+                SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
+                message_changed
+            );
+        }
+        if alt_changed > 0 {
+            println!(
+                "{}Alt text changed for {} images",
+                SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
+                alt_changed
+            );
         }
     }
 
