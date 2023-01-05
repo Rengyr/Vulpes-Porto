@@ -121,7 +121,9 @@ fn load_images(
     //Parse json to images
     let images: Vec<Image> = match serde_json::from_str(&images_json) {
         Ok(images) => images,
-        Err(err) => return Err(anyhow!(err).context("Unable to parse text as images json")),
+        Err(err) => {
+            return Err(anyhow!(err).context("Unable to parse text as images json"))
+        },
     };
 
     //Calculate md5 hashes as keys for images
@@ -303,10 +305,10 @@ fn post_image<'a>(
         Ok(client_media) => client_media,
         Err(e) => {
             eprintln!(
-                "{}Unable to make client for media request: {} for image {}",
+                "{}Unable to make client for media request for image {}.\nError: {:#}",
                 SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                e,
-                image.location
+                image.location,
+                e
             );
             return Err(());
         }
@@ -317,7 +319,7 @@ fn post_image<'a>(
         Ok(response) => response,
         Err(e) => {
             eprintln!(
-                "{}Unable to get image {}: {}",
+                "{}Unable to get image {}.\nError: {:#}",
                 SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
                 image.location,
                 e
@@ -354,10 +356,10 @@ fn post_image<'a>(
         Ok(response) => response,
         Err(e) => {
             eprintln!(
-                "{}Unable to post image to /api/v2/media: {} for image {}",
+                "{}Unable to post image to /api/v2/media for image {}.\nError: {:#}",
                 SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                e,
-                image.location
+                image.location,
+                e
             );
             return Err(());
         }
@@ -404,10 +406,10 @@ fn post_image<'a>(
         Ok(media_json) => media_json,
         Err(e) => {
             eprintln!(
-                "{}Unable to parse media json: {} for image {}",
+                "{}Unable to parse media json for image {}.\nError: {:#}",
                 SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                e,
-                image.location
+                image.location,
+                e
             );
             return Err(());
         }
@@ -460,10 +462,10 @@ fn post_image<'a>(
         Ok(response) => response,
         Err(e) => {
             eprintln!(
-                "{}Unable to post image to /api/v1/statuses: {} for image {}",
+                "{}Unable to post image to /api/v1/statuses for image {}.\nError: {:#}",
                 SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                e,
-                image.location
+                image.location,
+                e
             );
             return Err(());
         }
@@ -512,7 +514,7 @@ fn save_images_ids(image_db: &mut ImageDB, app_config: &Config) {
         }
         Err(e) => {
             eprintln!(
-                "{}Unable to create not_used_images_log_location: {}",
+                "{}Unable to create not_used_images_log_location.\nError: {:#}",
                 SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
                 e
             );
@@ -567,7 +569,7 @@ fn main() {
                 Ok(res) => res,
                 Err(e) => {
                     panic!(
-                        "{}Unable to parse not_used_images_log: {}",
+                        "{}Unable to parse not_used_images_log.\nError: {:#}",
                         SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
                         e
                     );
@@ -593,7 +595,7 @@ fn main() {
         Ok(images) => images,
         Err(e) => {
             panic!(
-                "{}Unable to load images: {}",
+                "{}Unable to load images.\nError: {:#}",
                 SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
                 e
             );
@@ -647,7 +649,7 @@ fn main() {
                 Ok(images_new) => images_new,
                 Err(e) => {
                     eprintln!(
-                        "{}Unable to load images: {}, continuing with old json",
+                        "{}Unable to load images, continuing with old json. Error:\n{:#}",
                         SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
                         e
                     );
