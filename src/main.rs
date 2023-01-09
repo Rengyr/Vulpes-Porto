@@ -270,6 +270,10 @@ fn post_image<'a>(
         true => {
             if images_db.random_deck.is_empty() {
                 images_db.random_deck.append(&mut images_db.used.to_vec());
+                println!(
+                    "{}Random deck was shuffled",
+                    SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
+                );
             }
             images_db
                 .random_deck
