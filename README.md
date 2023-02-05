@@ -1,5 +1,7 @@
 Vulpes Porto\
-Dominik 'Rengyr' Kosík, <mail@rengyr.eu>
+Dominik 'Rengyr' Kosík, <mail@rengyr.eu>\
+
+[![Project status](https://github.com/Rengyr/Vulpes-Porto/actions/workflows/rust.yml/badge.svg)](https://github.com/Rengyr/Vulpes-Porto/actions/workflows/rust.yml)
 
 Mastodon bot to post remotely hosted photos daily at set times. The bot will prioritize images that weren't yet posted. In case of exhaustion of new photos the bot will post random photo from the pool.
 
