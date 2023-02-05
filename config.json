@@ -1,7 +1,7 @@
 {
 	"server": "https://botsin.space",
 	"token": "BZohmwJu YOUR ACCOUN TOKEN MmQ50lTk8",
-	"image_json": "https://yourpage/sub/sources.json",
+	"image_json": "https://yourpage/sub/sources.json or local path to sources.json",
 	"times": ["8:00"],
 	"not_used_images_log_location": "./unused.log",
 	"tags": "#Bot  //optional setting"
