@@ -5,7 +5,7 @@ use std::{
     fs::{self, File},
     io::{BufReader, Write},
     thread,
-    time::Instant,
+    time::Instant, path::Path,
 };
 
 use once_cell::sync::OnceCell;
@@ -106,16 +106,30 @@ fn load_images(
     images_db: &mut ImageDB,
     images_old: Option<&HashMap<String, Image>>,
 ) -> Result<HashMap<String, Image>> {
-    //Get json file
-    let result = match reqwest::blocking::get(image_json_path) {
-        Ok(result) => result,
-        Err(err) => return Err(anyhow!(err).context("Unable to get images json")),
-    };
+    //Check if path is system one or website one
+    let images_json = match Path::new(image_json_path).exists(){
+        true => {
+            //Load the json file from disk
+            match fs::read_to_string(image_json_path){
+                Ok(images_json) => images_json,
+                Err(err) => {
+                    return Err(anyhow!(err).context("Unable to read json file with images"))
+                },
+            }
+        },
+        false => {
+            //Get json file from remtoe location
+            let result = match reqwest::blocking::get(image_json_path) {
+                Ok(result) => result,
+                Err(err) => return Err(anyhow!(err).context("Unable to find json file with images (either local path or web address is wrong)")),
+            };
 
-    //Parse json as text
-    let images_json = match result.text() {
-        Ok(images_json) => images_json,
-        Err(err) => return Err(anyhow!(err).context("Unable parse web result as text")),
+            //Parse remote file as text
+            match result.text() {
+                Ok(images_json) => images_json,
+                Err(err) => return Err(anyhow!(err).context("Unable parse web result of json file with images as text")),
+            }
+        },
     };
 
     //Parse json to images
