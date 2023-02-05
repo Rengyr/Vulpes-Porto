@@ -257,7 +257,7 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
     }
 }
 
-///Send request for new media post to Mastodon server and return error is there is any.
+///Send request for new media post to Mastodon server and return error if there is any.
 fn post_image<'a>(
     app_config: &Config,
     images: &'a HashMap<String, Image>,
