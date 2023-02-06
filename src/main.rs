@@ -118,8 +118,18 @@ fn load_images(
             }
         },
         false => {
+            let client_media = match reqwest::blocking::Client::builder()
+                .user_agent("Vulpes Porto")
+                .build()
+            {
+                Ok(client_media) => client_media,
+                Err(err) => {
+                    return Err(anyhow!(err).context("Unable to make reqwest client for remote json file with images"));
+                }
+            };
+            
             //Get json file from remtoe location
-            let result = match reqwest::blocking::get(image_json_path) {
+            let result = match client_media.get(image_json_path).send() {
                 Ok(result) => result,
                 Err(err) => return Err(anyhow!(err).context("Unable to find json file with images (either local path or web address is wrong)")),
             };
