@@ -80,9 +80,10 @@ where
 ///Structure containing info about the image
 #[derive(Serialize, Deserialize, Debug)]
 struct Image {
-    msg: Option<String>, //Optional message
-    alt: Option<String>, //Optional alt text for image
-    location: String,    //Link to hosted image
+    msg: Option<String>,                //Optional message
+    alt: Option<String>,                //Optional alt text for image
+    context_warning: Option<String>,    //Optional context warning
+    location: String,                   //Link to hosted image
 }
 
 ///Structure containing info about current used and unused images
@@ -475,6 +476,11 @@ fn post_image<'a>(
     //Add message to the posted image if there is something
     if !message.is_empty() {
         status_request = status_request.text("status", message);
+    }
+
+    //Add context warning to the posted image if there is something
+    if let Some(context_warning) = &image.context_warning {
+        status_request = status_request.text("spoiler_text", context_warning.to_owned());
     }
 
     let response = client
