@@ -82,7 +82,7 @@ where
 struct Image {
     msg: Option<String>,                //Optional message
     alt: Option<String>,                //Optional alt text for image
-    context_warning: Option<String>,    //Optional context warning
+    content_warning: Option<String>,    //Optional content warning
     location: String,                   //Link to hosted image
 }
 
@@ -479,8 +479,8 @@ fn post_image<'a>(
     }
 
     //Add context warning to the posted image if there is something
-    if let Some(context_warning) = &image.context_warning {
-        status_request = status_request.text("spoiler_text", context_warning.to_owned());
+    if let Some(content_warning) = &image.content_warning {
+        status_request = status_request.text("spoiler_text", content_warning.to_owned());
     }
 
     let response = client

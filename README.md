@@ -22,7 +22,7 @@ Start with posting one image immediately:
 
 Server side configuration example is in config.json. This file contains configuration for mastodon server, token of the bot, location of json with links of remote photos that will be described later, times when to post photos each day and location for file for tracking used and still unused photos.
 
-Json file with links to images has following structure: list of records where each record has "location" which is a link to the remotely hosted photo. Each record can have optional message that will get posted with the photo, optional alternative text for the photo and optional context warning.
+Json file with links to images has following structure: list of records where each record has "location" which is a link to the remotely hosted photo. Each record can have optional message that will get posted with the photo, optional alternative text for the photo and optional content warning.
 
 Example of json structure:
 ```
@@ -43,7 +43,7 @@ Example of json structure:
 	"msg": "Somewhere on field, Germany",
 	"location": "https://example.com/fennec/sources/0002.jpg",
 	"alt": "Fennec sitting on a grass",
-	"context_warning": "Dangerously beautiful fox"
+	"content_warning": "Dangerously beautiful fox"
     }
 ]
 ```
