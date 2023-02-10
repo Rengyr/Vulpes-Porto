@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate version;
+
 use core::time;
 use std::{
     collections::HashMap,
@@ -18,6 +21,8 @@ use reqwest::blocking::multipart::{self, Part};
 use serde_json::Value;
 
 use anyhow::{anyhow, Result};
+
+static GITHUB_LINK: &str = "https://github.com/Rengyr/Vulpes-Porto";
 
 static SYSTEMD_ERROR: OnceCell<String> = OnceCell::new();
 static SYSTEMD_NOTICE: OnceCell<String> = OnceCell::new();
@@ -120,7 +125,7 @@ fn load_images(
         },
         false => {
             let client_media = match reqwest::blocking::Client::builder()
-                .user_agent("Vulpes Porto")
+                .user_agent("VulpesPorto/".to_string() + version!() + " (" + GITHUB_LINK + ")")
                 .build()
             {
                 Ok(client_media) => client_media,
@@ -328,7 +333,7 @@ fn post_image<'a>(
 
     //Make client for request
     let client_media = match reqwest::blocking::Client::builder()
-        .user_agent("Vulpes Porto")
+        .user_agent("VulpesPorto/".to_string() + version!() + " (" + GITHUB_LINK + ")")
         .build()
     {
         Ok(client_media) => client_media,
