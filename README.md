@@ -47,3 +47,6 @@ Example of json structure:
     }
 ]
 ```
+
+Example of mastodon account that is using Vulpes Porto:\
+[@toomanyfoxes@botsin.space](https://botsin.space/@toomanyfoxes)
