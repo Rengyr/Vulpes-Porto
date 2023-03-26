@@ -256,14 +256,14 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
         return date_time + chrono::Duration::days(1);
     }
 
-    let mut new_date_time = date_time.to_owned();
-    let date_now: DateTime<Tz> = Utc::now().with_timezone(&date_time.timezone());
+    let mut current_date = date_time.date();
+    let date_time_now: DateTime<Tz> = Utc::now().with_timezone(&date_time.timezone());
 
     //Loop until time is found
     loop {
         //Try all times in the config
         for (hours, minutes) in config.times.iter() {
-            new_date_time = match new_date_time.date().and_hms_opt(
+            let post_date_time = match current_date.and_hms_opt(
                 hours.to_owned() as u32,
                 minutes.to_owned() as u32,
                 0,
@@ -277,14 +277,13 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
                 }
             };
 
-            if date_now < new_date_time {
-                return new_date_time;
+            if date_time_now < post_date_time {
+                return post_date_time;
             }
         }
 
-        //Add one day if no time in config is in the future for current day, set time to 12:00:00 to avoid skipping days due to DST
-        new_date_time = new_date_time.date().and_hms_opt(12, 0, 0).unwrap();
-        new_date_time += chrono::Duration::days(1);
+        //Add one day if no time in config is in the future for current day
+        current_date += chrono::Duration::days(1);
     }
 }
 
