@@ -270,6 +270,11 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
             ) {
                 Some(new_date_time) => new_date_time,
                 None => {
+                    if *hours <= 23 && *minutes <= 59{
+                        println!("{}Skipped time {}:{} because it doesn't exist due to Daylight Saving Time",
+                        SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), hours, minutes);
+                        continue;   //Hours and minutes are correct, but probably daylight saving time make the specific time not exist
+                    }
                     panic!(
                         "{}Invalid hours or minutes in the configuration: hours: {}, minutes: {}",
                         SYSTEMD_ERROR.get().unwrap_or(&"".to_string()), hours, minutes
