@@ -271,8 +271,8 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
                 Some(new_date_time) => new_date_time,
                 None => {
                     panic!(
-                        "{}Invalid hours or minutes in the configuration",
-                        SYSTEMD_ERROR.get().unwrap_or(&"".to_string())
+                        "{}Invalid hours or minutes in the configuration: hours: {}, minutes: {}",
+                        SYSTEMD_ERROR.get().unwrap_or(&"".to_string()), hours, minutes
                     )
                 }
             };
@@ -282,7 +282,8 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
             }
         }
 
-        //Add one day if no time in config is in the future for current day
+        //Add one day if no time in config is in the future for current day, set time to 12:00:00 to avoid skipping days due to DST
+        new_date_time = new_date_time.date().and_hms_opt(12, 0, 0).unwrap();
         new_date_time += chrono::Duration::days(1);
     }
 }
