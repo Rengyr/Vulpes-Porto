@@ -6,9 +6,10 @@ use std::{
     collections::HashMap,
     env,
     fs::{self, File},
-    io::{BufReader, Write},
+    io::{BufReader, Read, Write},
+    path::Path,
     thread,
-    time::Instant, path::Path,
+    time::Instant,
 };
 
 use once_cell::sync::OnceCell;
@@ -28,6 +29,11 @@ static SYSTEMD_ERROR: OnceCell<String> = OnceCell::new();
 static SYSTEMD_NOTICE: OnceCell<String> = OnceCell::new();
 static SYSTEMD_INFO: OnceCell<String> = OnceCell::new();
 
+enum GetImageErrorLevel {
+    Normal(anyhow::Error),
+    Critical(anyhow::Error)
+}
+
 ///Structure holding configuration of the bot
 #[derive(Serialize, Deserialize, Debug)]
 struct Config {
@@ -38,6 +44,7 @@ struct Config {
     #[serde(deserialize_with = "from_string_time")]
     times: Vec<(u8, u8)>,
     tags: Option<String>,
+    local_path: Option<String>,
 }
 
 fn from_string_time<'de, D>(deserializer: D) -> Result<Vec<(u8, u8)>, D::Error>
@@ -85,10 +92,10 @@ where
 ///Structure containing info about the image
 #[derive(Serialize, Deserialize, Debug)]
 struct Image {
-    msg: Option<String>,                //Optional message
-    alt: Option<String>,                //Optional alt text for image
-    content_warning: Option<String>,    //Optional content warning
-    location: String,                   //Link to hosted image
+    msg: Option<String>,             //Optional message
+    alt: Option<String>,             //Optional alt text for image
+    content_warning: Option<String>, //Optional content warning
+    location: String,                //Link to hosted image
 }
 
 ///Structure containing info about current used and unused images
@@ -113,16 +120,16 @@ fn load_images(
     images_old: Option<&HashMap<String, Image>>,
 ) -> Result<HashMap<String, Image>> {
     //Check if path is system one or website one
-    let images_json = match Path::new(image_json_path).exists(){
+    let images_json = match Path::new(image_json_path).exists() {
         true => {
             //Load the json file from disk
-            match fs::read_to_string(image_json_path){
+            match fs::read_to_string(image_json_path) {
                 Ok(images_json) => images_json,
                 Err(err) => {
                     return Err(anyhow!(err).context("Unable to read json file with images"))
-                },
+                }
             }
-        },
+        }
         false => {
             let client_media = match reqwest::blocking::Client::builder()
                 .user_agent("VulpesPorto/".to_string() + version!() + " (" + GITHUB_LINK + ")")
@@ -130,10 +137,12 @@ fn load_images(
             {
                 Ok(client_media) => client_media,
                 Err(err) => {
-                    return Err(anyhow!(err).context("Unable to make reqwest client for remote json file with images"));
+                    return Err(anyhow!(err).context(
+                        "Unable to make reqwest client for remote json file with images",
+                    ));
                 }
             };
-            
+
             //Get json file from remtoe location
             let result = match client_media.get(image_json_path).send() {
                 Ok(result) => result,
@@ -143,17 +152,18 @@ fn load_images(
             //Parse remote file as text
             match result.text() {
                 Ok(images_json) => images_json,
-                Err(err) => return Err(anyhow!(err).context("Unable parse web result of json file with images as text")),
+                Err(err) => {
+                    return Err(anyhow!(err)
+                        .context("Unable parse web result of json file with images as text"))
+                }
             }
-        },
+        }
     };
 
     //Parse json to images
     let images: Vec<Image> = match serde_json::from_str(&images_json) {
         Ok(images) => images,
-        Err(err) => {
-            return Err(anyhow!(err).context("Unable to parse text as images json"))
-        },
+        Err(err) => return Err(anyhow!(err).context("Unable to parse text as images json")),
     };
 
     //Calculate md5 hashes as keys for images
@@ -181,6 +191,14 @@ fn load_images(
     //Remove images that were removed from json from the unused list
     let mut removed = 0;
     images_db.unused.retain(|hash| {
+        if !images.contains_key(hash) {
+            removed += 1;
+            false
+        } else {
+            true
+        }
+    });
+    images_db.used.retain(|hash| {
         if !images.contains_key(hash) {
             removed += 1;
             false
@@ -270,14 +288,16 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
             ) {
                 Some(new_date_time) => new_date_time,
                 None => {
-                    if *hours <= 23 && *minutes <= 59{
+                    if *hours <= 23 && *minutes <= 59 {
                         println!("{}Skipped time {}:{} because it doesn't exist due to Daylight Saving Time",
                         SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), hours, minutes);
-                        continue;   //Hours and minutes are correct, but probably daylight saving time make the specific time not exist
+                        continue; //Hours and minutes are correct, but probably daylight saving time make the specific time not exist
                     }
                     panic!(
                         "{}Invalid hours or minutes in the configuration: hours: {}, minutes: {}",
-                        SYSTEMD_ERROR.get().unwrap_or(&"".to_string()), hours, minutes
+                        SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
+                        hours,
+                        minutes
                     )
                 }
             };
@@ -289,6 +309,112 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
 
         //Add one day if no time in config is in the future for current day
         current_date += chrono::Duration::days(1);
+    }
+}
+
+///Fetch image and get it as bytes ready to be send to API
+fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, GetImageErrorLevel> {
+    // Check if it is local image
+    if let Some(image_path) = image_path.strip_prefix("file:") {
+        let Some(local_path) = local_path else { return Err(GetImageErrorLevel::Critical(anyhow!("Missing local path in configuration file"))) };
+        let local_path_struct = Path::new(local_path);
+        let path = local_path_struct.join(image_path);
+
+        // Check if path exist
+        if !path.exists() {
+            return match path.into_os_string().into_string() {
+                Ok(path) => Err(GetImageErrorLevel::Critical(anyhow!("Local path is wrong: {}", path))),
+                Err(_) => Err(GetImageErrorLevel::Critical(anyhow!("Not correct OS path for: {}", image_path))),
+            };
+        }
+
+        // Directory traversal attack mitigation
+        let path = match path.canonicalize() {
+            Ok(path) => path,
+            Err(error) => {
+                return Err(GetImageErrorLevel::Critical(anyhow!(
+                    "Can't make canonical absolute path for image {}: {:#}",
+                    image_path,
+                    error
+                )))
+            }
+        };
+        let local_canon_path = match local_path_struct.canonicalize(){
+            Ok(path) => path,
+            Err(error) => {
+                return Err(GetImageErrorLevel::Critical(anyhow!(
+                    "Can't make canonical absolute path for local path {}: {:#}",
+                    local_path,
+                    error
+                )))
+            }
+        };
+        if !path.starts_with(local_canon_path) {
+            return Err(GetImageErrorLevel::Critical(anyhow!(
+                "Directory traversal is not permitted for local image {}",
+                image_path
+            )));
+        }
+
+        // Read file
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut file = match File::open(path) {
+            Ok(file) => file,
+            Err(error) => return Err(GetImageErrorLevel::Critical(anyhow!("Can't open image {}: {:#}", image_path, error))),
+        };
+
+        match file.read_to_end(&mut bytes) {
+            Ok(_) => {}
+            Err(error) => {
+                return Err(GetImageErrorLevel::Normal(anyhow!(
+                    "Error during reading image {}: {:+}",
+                    image_path,
+                    error
+                )));
+            }
+        };
+
+        Ok(bytes)
+    // Remote image
+    } else {
+        //Make client for request
+        let client_media = match reqwest::blocking::Client::builder()
+            .user_agent("VulpesPorto/".to_string() + version!() + " (" + GITHUB_LINK + ")")
+            .build()
+        {
+            Ok(client_media) => client_media,
+            Err(e) => {
+                return Err(GetImageErrorLevel::Normal(anyhow!(
+                    "Unable to initialize client to fetch remote images: {:#}",
+                    e
+                )));
+            }
+        };
+
+        //Download image to cache
+        let response = match client_media.get(image_path).send() {
+            Ok(response) => response,
+            Err(e) => {
+                return Err(GetImageErrorLevel::Normal(anyhow!(
+                    "Unable to get remote image {}: {:#}",
+                    image_path,
+                    e
+                )));
+            }
+        };
+        
+        if response.status() == 401 || response.status() == 403 || response.status() == 404 {
+            return Err(GetImageErrorLevel::Critical(anyhow!("Client error response when getting remote image {}: {}", image_path, response.status())))
+        }
+
+        match response.bytes() {
+            Ok(bytes) => Ok(bytes.into_iter().collect()),
+            Err(error) => Err(GetImageErrorLevel::Normal(anyhow!(
+                "Response from remote image {} request is wrong: {:#}",
+                image_path,
+                error
+            ))),
+        }
     }
 }
 
@@ -336,40 +462,49 @@ fn post_image<'a>(
         }
     };
 
-    //Make client for request
-    let client_media = match reqwest::blocking::Client::builder()
-        .user_agent("VulpesPorto/".to_string() + version!() + " (" + GITHUB_LINK + ")")
-        .build()
-    {
-        Ok(client_media) => client_media,
-        Err(e) => {
+    let bytes = get_image(app_config.local_path.as_ref(), &image.location);
+
+    let bytes = match bytes {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            let error_message = match &error {
+                GetImageErrorLevel::Normal(message) => message,
+                GetImageErrorLevel::Critical(message) => message,
+            };
             eprintln!(
-                "{}Unable to make client for media request for image {}.\nError: {:#}",
+                "{}{:#}",
                 SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                image.location,
-                e
+                error_message
             );
+
+            //Remove image for critical errors
+            if matches!(error, GetImageErrorLevel::Critical{..}){
+                match images_db.unused.is_empty() {
+                    true => {
+                        let pos = images_db
+                            .random_deck
+                            .iter()
+                            .position(|hash| hash == &image_hash)
+                            .unwrap();
+                        images_db.random_deck.remove(pos);
+                    }
+                    false => {
+                        let pos = images_db
+                            .unused
+                            .iter()
+                            .position(|hash| hash == &image_hash)
+                            .unwrap();
+                        images_db.unused.remove(pos);
+                        images_db.used.push(image_hash.to_owned());
+                    }
+                };
+            }
+
             return Err(());
         }
     };
 
-    //Download image to cache
-    let response = match client_media.get(&image.location).send() {
-        Ok(response) => response,
-        Err(e) => {
-            eprintln!(
-                "{}Unable to get image {}.\nError: {:#}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                image.location,
-                e
-            );
-            return Err(());
-        }
-    };
-
-    let bytes = response;
-
-    let part = Part::reader(bytes).file_name("image");
+    let part = Part::bytes(bytes).file_name("image");
 
     let client = reqwest::blocking::Client::new();
 
@@ -405,28 +540,6 @@ fn post_image<'a>(
     };
 
     if !response.status().is_success() {
-        if response.status() == 404 {
-            //Remove hash from the lists
-            match images_db.unused.is_empty() {
-                true => {
-                    let pos = images_db
-                        .random_deck
-                        .iter()
-                        .position(|hash| hash == &image_hash)
-                        .unwrap();
-                    images_db.random_deck.remove(pos);
-                }
-                false => {
-                    let pos = images_db
-                        .unused
-                        .iter()
-                        .position(|hash| hash == &image_hash)
-                        .unwrap();
-                    images_db.unused.remove(pos);
-                    images_db.used.push(image_hash.to_owned());
-                }
-            };
-        }
         eprintln!(
             "{}Wrong status from media api: {} for image {}",
             SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
@@ -645,6 +758,7 @@ fn main() {
             );
         }
     };
+    save_images_ids(&mut not_used_images, &app_config);
 
     //Parse additional arguments
     for arg in args.iter().skip(2) {
