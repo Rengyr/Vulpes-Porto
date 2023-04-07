@@ -4,6 +4,6 @@
 	"image_json": "https://yourpage/sub/sources.json or local path to sources.json",
 	"times": ["8:00"],
 	"not_used_images_log_location": "./unused.log",
-	"tags": "#Bot  //optional setting"
+	"tags": "#Bot  //optional setting",
 	"local_path": "./   //optional setting for local images"
 }
