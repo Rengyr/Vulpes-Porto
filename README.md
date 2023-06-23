@@ -20,6 +20,8 @@ Start with posting one image immediately:
 
 Server side configuration example is in config.json. This file contains configuration for mastodon server, token of the bot, location of json with links of local or remote photos that will be described later, times when to post photos each day and location for file for tracking used and still unused photos.
 
+In the server side configuration file syslog style errors and error level can be set.
+
 Json file with links to images has following structure: list of records where each record has "location" which is a link to the remotely hosted photo or local photo. Each record can have optional message that will get posted with the photo, optional alternative text for the photo and optional content warning.
 
 Using local photos requires prefix "file:" in the "location" field in the json. Using local photos as well requires to have setup "local_path" in server side configuration file (see config.json example).
