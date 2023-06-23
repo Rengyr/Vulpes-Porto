@@ -29,10 +29,16 @@ enum GetImageErrorLevel {
     Critical(anyhow::Error),
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq, Ord, Eq)]
 enum MessageLevel {
-    Error,
-    Notice,
-    Info,
+    Emergency = 0, 
+    Alert = 1,
+    Critical = 2,
+    Error = 3,
+    Warning = 4,
+    Notice = 5,
+    Info = 6,
+    Debug = 7,
 }
 
 enum MessageOutput {
@@ -52,19 +58,23 @@ struct Config {
     tags: Option<String>,
     local_path: Option<String>,
     use_systemd_style: Option<bool>,
+    min_log_level_to_output: Option<MessageLevel>,
 }
 
 impl Config {
     /// Function to print message with correct level, output and systemd prefix if needed
     fn output_message(&self, message: &str, level: MessageLevel, output: MessageOutput) {
+        // Check if message level is enough to be outputted
+        if let Some(min_level) = self.min_log_level_to_output.as_ref() {
+            if &level > min_level {
+                return;
+            }
+        }
+
         // First append systemd prefix if needed based on message level and then write to correct output
         let message = match self.use_systemd_style {
             Some(true) => {
-                let prefix = match level {
-                    MessageLevel::Error => "<3>",
-                    MessageLevel::Notice => "<5>",
-                    MessageLevel::Info => "<6>",
-                };
+                let prefix = format!("<{}>", level as u8);
                 format!("{}{}", prefix, message)
             }
             _ => message.to_string(),
@@ -81,11 +91,7 @@ impl Config {
         // Append systemd prefix if needed based on message level and then panic
         let message = match self.use_systemd_style {
             Some(true) => {
-                let prefix = match level {
-                    MessageLevel::Error => "<3>",
-                    MessageLevel::Notice => "<5>",
-                    MessageLevel::Info => "<6>",
-                };
+                let prefix = format!("<{}>", level as u8);
                 format!("{}{}", prefix, message)
             }
             _ => message.to_string(),
@@ -347,7 +353,7 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
                             "Invalid hours or minutes in the configuration: hours: {}, minutes: {}",
                             hours, minutes
                         ),
-                        MessageLevel::Error,
+                        MessageLevel::Critical,
                     );
                 }
             };
@@ -776,7 +782,7 @@ fn main() {
         fs::read_to_string(&args[1]).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
 
     let mut app_config: Config =
-        serde_json::from_str(&app_config).unwrap_or_else(|_| panic!("Unable to parse config.json"));
+        serde_json::from_str(&app_config).unwrap_or_else(|e| panic!("Unable to parse config.json: {}", e));
     app_config.times.sort_unstable();
 
     //Parse systemd first to use it for further messages
@@ -801,7 +807,7 @@ fn main() {
                 Err(e) => {
                     app_config.panic_message(
                         &format!("Unable to parse not_used_images_log.\nError: {:#}", e),
-                        MessageLevel::Error,
+                        MessageLevel::Critical,
                     );
                 }
             }
@@ -816,7 +822,7 @@ fn main() {
     if app_config.times.is_empty() {
         app_config.panic_message(
             "Config has to contain at least one time",
-            MessageLevel::Error,
+            MessageLevel::Critical,
         );
     }
 
