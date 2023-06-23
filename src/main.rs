@@ -12,7 +12,6 @@ use std::{
     time::Instant,
 };
 
-use once_cell::sync::OnceCell;
 use rand::Rng;
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
@@ -25,13 +24,20 @@ use anyhow::{anyhow, Result};
 
 static GITHUB_LINK: &str = "https://github.com/Rengyr/Vulpes-Porto";
 
-static SYSTEMD_ERROR: OnceCell<String> = OnceCell::new();
-static SYSTEMD_NOTICE: OnceCell<String> = OnceCell::new();
-static SYSTEMD_INFO: OnceCell<String> = OnceCell::new();
-
 enum GetImageErrorLevel {
     Normal(anyhow::Error),
-    Critical(anyhow::Error)
+    Critical(anyhow::Error),
+}
+
+enum MessageLevel {
+    Error,
+    Notice,
+    Info,
+}
+
+enum MessageOutput {
+    Stdout,
+    Stderr,
 }
 
 ///Structure holding configuration of the bot
@@ -45,6 +51,47 @@ struct Config {
     times: Vec<(u8, u8)>,
     tags: Option<String>,
     local_path: Option<String>,
+    use_systemd_style: Option<bool>,
+}
+
+impl Config {
+    /// Function to print message with correct level, output and systemd prefix if needed
+    fn output_message(&self, message: &str, level: MessageLevel, output: MessageOutput) {
+        // First append systemd prefix if needed based on message level and then write to correct output
+        let message = match self.use_systemd_style {
+            Some(true) => {
+                let prefix = match level {
+                    MessageLevel::Error => "<3>",
+                    MessageLevel::Notice => "<5>",
+                    MessageLevel::Info => "<6>",
+                };
+                format!("{}{}", prefix, message)
+            }
+            _ => message.to_string(),
+        };
+
+        match output {
+            MessageOutput::Stdout => println!("{}", message),
+            MessageOutput::Stderr => eprintln!("{}", message),
+        };
+    }
+
+    /// Function to panic with correct systemd level if needed
+    fn panic_message(&self, message: &str, level: MessageLevel) -> ! {
+        // Append systemd prefix if needed based on message level and then panic
+        let message = match self.use_systemd_style {
+            Some(true) => {
+                let prefix = match level {
+                    MessageLevel::Error => "<3>",
+                    MessageLevel::Notice => "<5>",
+                    MessageLevel::Info => "<6>",
+                };
+                format!("{}{}", prefix, message)
+            }
+            _ => message.to_string(),
+        };
+        panic!("{}", message);
+    }
 }
 
 fn from_string_time<'de, D>(deserializer: D) -> Result<Vec<(u8, u8)>, D::Error>
@@ -115,15 +162,15 @@ impl ImageDB {
 
 ///From link to json load new image and parse the results to ImageDB structure. Returns Hashmap with images with keys of md5 hashes or returns Error.
 fn load_images(
-    image_json_path: &str,
+    app_config: &Config,
     images_db: &mut ImageDB,
     images_old: Option<&HashMap<String, Image>>,
 ) -> Result<HashMap<String, Image>> {
     //Check if path is system one or website one
-    let images_json = match Path::new(image_json_path).exists() {
+    let images_json = match Path::new(&app_config.image_json).exists() {
         true => {
             //Load the json file from disk
-            match fs::read_to_string(image_json_path) {
+            match fs::read_to_string(&app_config.image_json) {
                 Ok(images_json) => images_json,
                 Err(err) => {
                     return Err(anyhow!(err).context("Unable to read json file with images"))
@@ -144,7 +191,7 @@ fn load_images(
             };
 
             //Get json file from remtoe location
-            let result = match client_media.get(image_json_path).send() {
+            let result = match client_media.get(&app_config.image_json).send() {
                 Ok(result) => result,
                 Err(err) => return Err(anyhow!(err).context("Unable to find json file with images (either local path or web address is wrong)")),
             };
@@ -181,10 +228,10 @@ fn load_images(
         }
     }
     if new > 0 {
-        println!(
-            "{}Added {} new images",
-            SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-            new
+        app_config.output_message(
+            &format!("Added {} new images", new),
+            MessageLevel::Notice,
+            MessageOutput::Stdout,
         );
     }
 
@@ -207,10 +254,10 @@ fn load_images(
         }
     });
     if removed > 0 {
-        println!(
-            "{}Removed {} images not found in json",
-            SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-            removed
+        app_config.output_message(
+            &format!("Removed {} images not found in json", removed),
+            MessageLevel::Notice,
+            MessageOutput::Stdout,
         );
     }
 
@@ -225,10 +272,13 @@ fn load_images(
         }
     });
     if removed_d > 0 {
-        println!(
-            "{}Removed from random deck {} images not found in json",
-            SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-            removed_d
+        app_config.output_message(
+            &format!(
+                "Removed from random deck {} images not found in json",
+                removed_d
+            ),
+            MessageLevel::Notice,
+            MessageOutput::Stdout,
         );
     }
 
@@ -247,17 +297,17 @@ fn load_images(
             }
         }
         if message_changed > 0 {
-            println!(
-                "{}Text changed for {} images",
-                SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-                message_changed
+            app_config.output_message(
+                &format!("Text changed for {} images", message_changed),
+                MessageLevel::Notice,
+                MessageOutput::Stdout,
             );
         }
         if alt_changed > 0 {
-            println!(
-                "{}Alt text changed for {} images",
-                SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-                alt_changed
+            app_config.output_message(
+                &format!("Alt text changed for {} images", alt_changed),
+                MessageLevel::Notice,
+                MessageOutput::Stdout,
             );
         }
     }
@@ -289,16 +339,16 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
                 Some(new_date_time) => new_date_time,
                 None => {
                     if *hours <= 23 && *minutes <= 59 {
-                        println!("{}Skipped time {}:{} because it doesn't exist due to Daylight Saving Time",
-                        SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()), hours, minutes);
+                        config.output_message(&format!("Skipped time {}:{} because it doesn't exist due to Daylight Saving Time", hours, minutes), MessageLevel::Notice, MessageOutput::Stdout);
                         continue; //Hours and minutes are correct, but probably daylight saving time make the specific time not exist
                     }
-                    panic!(
-                        "{}Invalid hours or minutes in the configuration: hours: {}, minutes: {}",
-                        SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                        hours,
-                        minutes
-                    )
+                    config.panic_message(
+                        &format!(
+                            "Invalid hours or minutes in the configuration: hours: {}, minutes: {}",
+                            hours, minutes
+                        ),
+                        MessageLevel::Error,
+                    );
                 }
             };
 
@@ -323,8 +373,14 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
         // Check if path exist
         if !path.exists() {
             return match path.into_os_string().into_string() {
-                Ok(path) => Err(GetImageErrorLevel::Critical(anyhow!("Local path is wrong: {}", path))),
-                Err(_) => Err(GetImageErrorLevel::Critical(anyhow!("Not correct OS path for: {}", image_path))),
+                Ok(path) => Err(GetImageErrorLevel::Critical(anyhow!(
+                    "Local path is wrong: {}",
+                    path
+                ))),
+                Err(_) => Err(GetImageErrorLevel::Critical(anyhow!(
+                    "Not correct OS path for: {}",
+                    image_path
+                ))),
             };
         }
 
@@ -339,7 +395,7 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
                 )))
             }
         };
-        let local_canon_path = match local_path_struct.canonicalize(){
+        let local_canon_path = match local_path_struct.canonicalize() {
             Ok(path) => path,
             Err(error) => {
                 return Err(GetImageErrorLevel::Critical(anyhow!(
@@ -360,7 +416,13 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
         let mut bytes: Vec<u8> = Vec::new();
         let mut file = match File::open(path) {
             Ok(file) => file,
-            Err(error) => return Err(GetImageErrorLevel::Critical(anyhow!("Can't open image {}: {:#}", image_path, error))),
+            Err(error) => {
+                return Err(GetImageErrorLevel::Critical(anyhow!(
+                    "Can't open image {}: {:#}",
+                    image_path,
+                    error
+                )))
+            }
         };
 
         match file.read_to_end(&mut bytes) {
@@ -402,9 +464,13 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
                 )));
             }
         };
-        
+
         if response.status() == 401 || response.status() == 403 || response.status() == 404 {
-            return Err(GetImageErrorLevel::Critical(anyhow!("Client error response when getting remote image {}: {}", image_path, response.status())))
+            return Err(GetImageErrorLevel::Critical(anyhow!(
+                "Client error response when getting remote image {}: {}",
+                image_path,
+                response.status()
+            )));
         }
 
         match response.bytes() {
@@ -431,9 +497,10 @@ fn post_image<'a>(
         true => {
             if images_db.random_deck.is_empty() {
                 images_db.random_deck.append(&mut images_db.used.to_vec());
-                println!(
-                    "{}Random deck was shuffled",
-                    SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
+                app_config.output_message(
+                    "Random deck was shuffled",
+                    MessageLevel::Notice,
+                    MessageOutput::Stdout,
                 );
             }
             images_db
@@ -453,10 +520,10 @@ fn post_image<'a>(
     let image = match images.get(&image_hash) {
         Some(image) => image,
         None => {
-            eprintln!(
-                "{}Can't find image with hash {}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                image_hash
+            app_config.output_message(
+                &format!("Can't find image with hash {}", image_hash),
+                MessageLevel::Error,
+                MessageOutput::Stderr,
             );
             return Err(());
         }
@@ -471,14 +538,14 @@ fn post_image<'a>(
                 GetImageErrorLevel::Normal(message) => message,
                 GetImageErrorLevel::Critical(message) => message,
             };
-            eprintln!(
-                "{}{:#}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                error_message
+            app_config.output_message(
+                &format!("{:#}", error_message),
+                MessageLevel::Error,
+                MessageOutput::Stderr,
             );
 
             //Remove image for critical errors
-            if matches!(error, GetImageErrorLevel::Critical{..}){
+            if matches!(error, GetImageErrorLevel::Critical { .. }) {
                 match images_db.unused.is_empty() {
                     true => {
                         let pos = images_db
@@ -529,27 +596,32 @@ fn post_image<'a>(
     let response = match response {
         Ok(response) => response,
         Err(e) => {
-            eprintln!(
-                "{}Unable to post image to /api/v2/media for image {}.\nError: {:#}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                image.location,
-                e
+            app_config.output_message(
+                &format!(
+                    "Unable to post image to /api/v2/media for image {}.\nError: {:#}",
+                    image.location, e
+                ),
+                MessageLevel::Error,
+                MessageOutput::Stderr,
             );
             return Err(());
         }
     };
 
     if !response.status().is_success() {
-        eprintln!(
-            "{}Wrong status from media api: {} for image {}",
-            SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-            response.status(),
-            image.location
+        app_config.output_message(
+            &format!(
+                "Wrong status from media api: {} for image {}",
+                response.status(),
+                image.location
+            ),
+            MessageLevel::Error,
+            MessageOutput::Stderr,
         );
-        eprintln!(
-            "{}Response: {}",
-            SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-            response.text().unwrap()
+        app_config.output_message(
+            &format!("Response: {}", response.text().unwrap()),
+            MessageLevel::Error,
+            MessageOutput::Stderr,
         );
         return Err(());
     }
@@ -557,11 +629,13 @@ fn post_image<'a>(
     let media_json: Value = match serde_json::from_str(&response.text().unwrap()) {
         Ok(media_json) => media_json,
         Err(e) => {
-            eprintln!(
-                "{}Unable to parse media json for image {}.\nError: {:#}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                image.location,
-                e
+            app_config.output_message(
+                &format!(
+                    "Unable to parse media json for image {}.\nError: {:#}",
+                    image.location, e
+                ),
+                MessageLevel::Error,
+                MessageOutput::Stderr,
             );
             return Err(());
         }
@@ -570,11 +644,13 @@ fn post_image<'a>(
     let media_id: String = match media_json["id"].as_str() {
         Some(media_id) => media_id.to_string(),
         None => {
-            eprintln!(
-                "{}Unable to get media id: {:?} for image {}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                media_json,
-                image.location
+            app_config.output_message(
+                &format!(
+                    "Unable to get media id: {:?} for image {}",
+                    media_json, image.location
+                ),
+                MessageLevel::Error,
+                MessageOutput::Stderr,
             );
             return Err(());
         }
@@ -618,22 +694,27 @@ fn post_image<'a>(
     let response = match response {
         Ok(response) => response,
         Err(e) => {
-            eprintln!(
-                "{}Unable to post image to /api/v1/statuses for image {}.\nError: {:#}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                image.location,
-                e
+            app_config.output_message(
+                &format!(
+                    "Unable to post image to /api/v1/statuses for image {}.\nError: {:#}",
+                    image.location, e
+                ),
+                MessageLevel::Error,
+                MessageOutput::Stderr,
             );
             return Err(());
         }
     };
 
     if !response.status().is_success() {
-        eprintln!(
-            "{}Wrong status from statuses api: {} for image {}",
-            SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-            response.status(),
-            image.location
+        app_config.output_message(
+            &format!(
+                "Wrong status from statuses api: {} for image {}",
+                response.status(),
+                image.location
+            ),
+            MessageLevel::Error,
+            MessageOutput::Stderr,
         );
         return Err(());
     }
@@ -670,10 +751,13 @@ fn save_images_ids(image_db: &mut ImageDB, app_config: &Config) {
                 .unwrap();
         }
         Err(e) => {
-            eprintln!(
-                "{}Unable to create not_used_images_log_location.\nError: {:#}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                e
+            app_config.output_message(
+                &format!(
+                    "Unable to create not_used_images_log_location.\nError: {:#}",
+                    e
+                ),
+                MessageLevel::Error,
+                MessageOutput::Stderr,
             );
         }
     };
@@ -683,40 +767,30 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        println!("Usage: {} <config.json> [--now] [--systemd]", args[0]);
+        println!("Usage: {} <config.json> [--now]", args[0]);
         return;
     }
+
+    //Load bot configuration
+    let app_config =
+        fs::read_to_string(&args[1]).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
+
+    let mut app_config: Config =
+        serde_json::from_str(&app_config).unwrap_or_else(|_| panic!("Unable to parse config.json"));
+    app_config.times.sort_unstable();
 
     //Parse systemd first to use it for further messages
     for arg in args.iter().skip(2) {
         //Set systemd output style
         if arg == "--systemd" {
-            let _ = SYSTEMD_ERROR.set("<3>".to_string());
-            let _ = SYSTEMD_NOTICE.set("<5>".to_string());
-            let _ = SYSTEMD_INFO.set("<6>".to_string());
+            app_config.use_systemd_style = Some(true);
+            app_config.output_message(
+                "Using --systemd is deprecated, use setting in configuration file instead",
+                MessageLevel::Notice,
+                MessageOutput::Stdout,
+            );
         }
     }
-
-    //Set default value if it wasn't set before, we don't care if it fails from being already set
-    let _ = SYSTEMD_ERROR.set("".to_string());
-    let _ = SYSTEMD_NOTICE.set("".to_string());
-    let _ = SYSTEMD_INFO.set("".to_string());
-
-    //Load bot configuration
-    let app_config = fs::read_to_string(&args[1]).unwrap_or_else(|_| {
-        panic!(
-            "{}Couldn't find config.json file",
-            SYSTEMD_ERROR.get().unwrap_or(&"".to_string())
-        )
-    });
-
-    let mut app_config: Config = serde_json::from_str(&app_config).unwrap_or_else(|_| {
-        panic!(
-            "{}Unable to parse config.json",
-            SYSTEMD_ERROR.get().unwrap_or(&"".to_string())
-        )
-    });
-    app_config.times.sort_unstable();
 
     //Load used and unused list of images
     let mut not_used_images = match File::open(app_config.not_used_images_log_location.clone()) {
@@ -725,10 +799,9 @@ fn main() {
             match serde_json::from_reader(reader) {
                 Ok(res) => res,
                 Err(e) => {
-                    panic!(
-                        "{}Unable to parse not_used_images_log.\nError: {:#}",
-                        SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                        e
+                    app_config.panic_message(
+                        &format!("Unable to parse not_used_images_log.\nError: {:#}", e),
+                        MessageLevel::Error,
                     );
                 }
             }
@@ -741,20 +814,19 @@ fn main() {
     };
 
     if app_config.times.is_empty() {
-        panic!(
-            "{}Config has to contain at least one time",
-            SYSTEMD_ERROR.get().unwrap_or(&"".to_string())
+        app_config.panic_message(
+            "Config has to contain at least one time",
+            MessageLevel::Error,
         );
     }
 
     //Check for images in image json
-    let mut images = match load_images(&app_config.image_json, &mut not_used_images, None) {
+    let mut images = match load_images(&app_config, &mut not_used_images, None) {
         Ok(images) => images,
         Err(e) => {
-            panic!(
-                "{}Unable to load images.\nError: {:#}",
-                SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                e
+            app_config.panic_message(
+                &format!("Unable to load images.\nError: {:#}", e),
+                MessageLevel::Error,
             );
         }
     };
@@ -766,11 +838,14 @@ fn main() {
         if arg == "--now" {
             let image = post_image(&app_config, &images, &mut not_used_images);
             if let Ok(image) = image {
-                println!(
-                    "{}Image {} posted with --now at {}",
-                    SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-                    image.location,
-                    Local::now()
+                app_config.output_message(
+                    &format!(
+                        "Image {} posted with --now at {}",
+                        image.location,
+                        Local::now()
+                    ),
+                    MessageLevel::Notice,
+                    MessageOutput::Stdout,
                 );
 
                 save_images_ids(&mut not_used_images, &app_config);
@@ -783,16 +858,19 @@ fn main() {
     let mut next_time = get_next_time(current_time, &app_config);
     let mut image_config_refresh_time = Instant::now() + time::Duration::from_secs(60 * 60);
 
-    println!(
-        "{}Next image will be at {}",
-        SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-        next_time
+    app_config.output_message(
+        &format!("Next image will be at {}", next_time),
+        MessageLevel::Notice,
+        MessageOutput::Stdout,
     );
-    println!(
-        "{}{}/{} images left",
-        SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-        not_used_images.unused.len(),
-        not_used_images.unused.len() + not_used_images.used.len()
+    app_config.output_message(
+        &format!(
+            "{}/{} images left",
+            not_used_images.unused.len(),
+            not_used_images.unused.len() + not_used_images.used.len()
+        ),
+        MessageLevel::Notice,
+        MessageOutput::Stdout,
     );
 
     let mut failed_to_post = false;
@@ -802,14 +880,16 @@ fn main() {
         //Check if there are changes in image json
         if image_config_refresh_time < Instant::now() {
             image_config_refresh_time = Instant::now() + time::Duration::from_secs(60 * 60); //Every hour
-            images = match load_images(&app_config.image_json, &mut not_used_images, Some(&images))
-            {
+            images = match load_images(&app_config, &mut not_used_images, Some(&images)) {
                 Ok(images_new) => images_new,
                 Err(e) => {
-                    eprintln!(
-                        "{}Unable to load images, continuing with old json. Error:\n{:#}",
-                        SYSTEMD_ERROR.get().unwrap_or(&"".to_string()),
-                        e
+                    app_config.output_message(
+                        &format!(
+                            "Unable to load images, continuing with old json. Error:\n{:#}",
+                            e
+                        ),
+                        MessageLevel::Error,
+                        MessageOutput::Stderr,
                     );
                     images //Returning old data
                 }
@@ -827,28 +907,37 @@ fn main() {
             next_time = get_next_time(next_time, &app_config);
 
             if let Ok(image) = image {
-                println!(
-                    "{}Image {} posted at {}, next at {}",
-                    SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-                    image.location,
-                    Local::now(),
-                    next_time
+                app_config.output_message(
+                    &format!(
+                        "Image {} posted at {}, next at {}",
+                        image.location,
+                        Local::now(),
+                        next_time
+                    ),
+                    MessageLevel::Notice,
+                    MessageOutput::Stdout,
                 );
-                println!(
-                    "{}Image text: {}",
-                    SYSTEMD_INFO.get().unwrap_or(&"".to_string()),
-                    image.msg.to_owned().unwrap_or_default()
+                app_config.output_message(
+                    &format!("Image text: {}", image.msg.to_owned().unwrap_or_default()),
+                    MessageLevel::Info,
+                    MessageOutput::Stdout,
                 );
-                println!(
-                    "{}Image alt text: {}",
-                    SYSTEMD_INFO.get().unwrap_or(&"".to_string()),
-                    image.alt.to_owned().unwrap_or_default()
+                app_config.output_message(
+                    &format!(
+                        "Image alt text: {}",
+                        image.alt.to_owned().unwrap_or_default()
+                    ),
+                    MessageLevel::Info,
+                    MessageOutput::Stdout,
                 );
-                println!(
-                    "{}{}/{} images left",
-                    SYSTEMD_NOTICE.get().unwrap_or(&"".to_string()),
-                    not_used_images.unused.len(),
-                    not_used_images.unused.len() + not_used_images.used.len()
+                app_config.output_message(
+                    &format!(
+                        "{}/{} images left",
+                        not_used_images.unused.len(),
+                        not_used_images.unused.len() + not_used_images.used.len()
+                    ),
+                    MessageLevel::Notice,
+                    MessageOutput::Stdout,
                 );
 
                 failed_to_post = false;

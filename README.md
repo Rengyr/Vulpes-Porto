@@ -9,8 +9,6 @@ The bot takes one mandatory argument which is the location of the configuration 
 
 `--now` that will cause the bot to post one image on start-up and then continue based on the schedule in the configuration json file
 
-`--systemd` that will prefix the output messages with log levels according to Linux syslog specification. The levels used are err, notice and info
-
 Example of starting bot:
 ```
 Normal start:
