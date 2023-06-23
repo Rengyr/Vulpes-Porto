@@ -58,14 +58,14 @@ struct Config {
     tags: Option<String>,
     local_path: Option<String>,
     use_systemd_style: Option<bool>,
-    min_log_level_to_output: Option<MessageLevel>,
+    log_level: Option<MessageLevel>,
 }
 
 impl Config {
     /// Function to print message with correct level, output and systemd prefix if needed
     fn output_message(&self, message: &str, level: MessageLevel, output: MessageOutput) {
         // Check if message level is enough to be outputted
-        if let Some(min_level) = self.min_log_level_to_output.as_ref() {
+        if let Some(min_level) = self.log_level.as_ref() {
             if &level > min_level {
                 return;
             }
