@@ -7,5 +7,5 @@
 	"tags": "#Bot  //optional setting",
 	"local_path": "./   //optional setting for local images",
 	"log_level": "Info",
-	"use_systemd_style": true
+	"use_syslog_style": true
 }

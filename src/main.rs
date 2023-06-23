@@ -57,7 +57,7 @@ struct Config {
     times: Vec<(u8, u8)>,
     tags: Option<String>,
     local_path: Option<String>,
-    use_systemd_style: Option<bool>,
+    use_syslog_style: Option<bool>,
     log_level: Option<MessageLevel>,
 }
 
@@ -72,7 +72,7 @@ impl Config {
         }
 
         // First append systemd prefix if needed based on message level and then write to correct output
-        let message = match self.use_systemd_style {
+        let message = match self.use_syslog_style {
             Some(true) => {
                 let prefix = format!("<{}>", level as u8);
                 format!("{}{}", prefix, message)
@@ -89,7 +89,7 @@ impl Config {
     /// Function to panic with correct systemd level if needed
     fn panic_message(&self, message: &str, level: MessageLevel) -> ! {
         // Append systemd prefix if needed based on message level and then panic
-        let message = match self.use_systemd_style {
+        let message = match self.use_syslog_style {
             Some(true) => {
                 let prefix = format!("<{}>", level as u8);
                 format!("{}{}", prefix, message)
@@ -789,7 +789,7 @@ fn main() {
     for arg in args.iter().skip(2) {
         //Set systemd output style
         if arg == "--systemd" {
-            app_config.use_systemd_style = Some(true);
+            app_config.use_syslog_style = Some(true);
             app_config.output_message(
                 "Using --systemd is deprecated, use setting in configuration file instead",
                 MessageLevel::Notice,
