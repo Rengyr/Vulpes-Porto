@@ -6,5 +6,6 @@
 	"not_used_images_log_location": "./unused.log",
 	"tags": "#Bot  //optional setting",
 	"local_path": "./   //optional setting for local images",
+	"log_level": "Info",
 	"use_systemd_style": true
 }
