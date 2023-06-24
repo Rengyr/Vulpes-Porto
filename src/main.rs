@@ -345,7 +345,7 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
                 Some(new_date_time) => new_date_time,
                 None => {
                     if *hours <= 23 && *minutes <= 59 {
-                        config.output_message(&format!("Skipped time {}:{} because it doesn't exist due to Daylight Saving Time", hours, minutes), MessageLevel::Notice, MessageOutput::Stdout);
+                        config.output_message(&format!("Skipped time {}:{} because it doesn't exist due to Daylight Saving Time", hours, minutes), MessageLevel::Info, MessageOutput::Stdout);
                         continue; //Hours and minutes are correct, but probably daylight saving time make the specific time not exist
                     }
                     config.panic_message(
@@ -505,7 +505,7 @@ fn post_image<'a>(
                 images_db.random_deck.append(&mut images_db.used.to_vec());
                 app_config.output_message(
                     "Random deck was shuffled",
-                    MessageLevel::Notice,
+                    MessageLevel::Debug,
                     MessageOutput::Stdout,
                 );
             }
@@ -850,7 +850,7 @@ fn main() {
                         image.location,
                         Local::now()
                     ),
-                    MessageLevel::Notice,
+                    MessageLevel::Info,
                     MessageOutput::Stdout,
                 );
 
@@ -866,7 +866,7 @@ fn main() {
 
     app_config.output_message(
         &format!("Next image will be at {}", next_time),
-        MessageLevel::Notice,
+        MessageLevel::Info,
         MessageOutput::Stdout,
     );
     app_config.output_message(
@@ -875,7 +875,7 @@ fn main() {
             not_used_images.unused.len(),
             not_used_images.unused.len() + not_used_images.used.len()
         ),
-        MessageLevel::Notice,
+        MessageLevel::Info,
         MessageOutput::Stdout,
     );
 
@@ -920,7 +920,7 @@ fn main() {
                         Local::now(),
                         next_time
                     ),
-                    MessageLevel::Notice,
+                    MessageLevel::Info,
                     MessageOutput::Stdout,
                 );
                 app_config.output_message(
@@ -942,7 +942,7 @@ fn main() {
                         not_used_images.unused.len(),
                         not_used_images.unused.len() + not_used_images.used.len()
                     ),
-                    MessageLevel::Notice,
+                    MessageLevel::Info,
                     MessageOutput::Stdout,
                 );
 
