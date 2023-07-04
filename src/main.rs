@@ -175,8 +175,14 @@ fn load_images(
     //Check if path is system one or website one
     let images_json = match Path::new(&app_config.image_json).exists() {
         true => {
+            // Allow to use "file:" prefix for local json file
+            let image_json_path = app_config
+                .image_json
+                .strip_prefix("file:")
+                .unwrap_or(&app_config.image_json);
+
             //Load the json file from disk
-            match fs::read_to_string(&app_config.image_json) {
+            match fs::read_to_string(image_json_path) {
                 Ok(images_json) => images_json,
                 Err(err) => {
                     return Err(anyhow!(err).context("Unable to read json file with images"))
