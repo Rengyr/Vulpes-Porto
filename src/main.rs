@@ -31,7 +31,7 @@ enum GetImageErrorLevel {
 
 #[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq, Ord, Eq)]
 enum MessageLevel {
-    Emergency = 0, 
+    Emergency = 0,
     Alert = 1,
     Critical = 2,
     Error = 3,
@@ -218,6 +218,65 @@ fn load_images(
         Ok(images) => images,
         Err(err) => return Err(anyhow!(err).context("Unable to parse text as images json")),
     };
+
+    //Calculate md5 hashes as keys for duplicity check
+    let images_hashes: Vec<(String, String)> = images
+        .iter()
+        .map(|image| {
+            (
+                format!("{:x}", md5::compute(&image.location)),
+                image.location.clone(),
+            )
+        })
+        .collect();
+
+    // Keep list of reported duplicates to avoid duplicate warnings
+    let mut reported_duplicates = Vec::new();
+    for (_, (hash, location)) in images_hashes.iter().enumerate() {
+        let mut duplicate_counter = 0;
+
+        // Iterate over all images with the same hash
+        for (index_duplicate, _) in images_hashes
+            .iter()
+            .enumerate()
+            .filter(|(_, (list_hash, _))| list_hash == hash)
+        {
+            duplicate_counter += 1;
+            if duplicate_counter > 1 {
+                // If this hash has already been reported, skip it
+                if reported_duplicates.contains(&index_duplicate) {
+                    continue;
+                }
+
+                reported_duplicates.push(index_duplicate);
+                app_config.output_message(
+                    &format!(
+                        "Image at line {} is duplicate, first seen at line {} [{}]",
+                        // Find correct line number
+                        images_json
+                            .split('\n')
+                            .enumerate()
+                            .filter(|(_, line_string)| line_string.contains(location))
+                            .nth(duplicate_counter - 1)
+                            .unwrap()
+                            .0
+                            + 1,
+                        // Find correct line number
+                        images_json
+                            .split('\n')
+                            .enumerate()
+                            .find(|(_, line_string)| line_string.contains(location))
+                            .unwrap()
+                            .0
+                            + 1,
+                        location
+                    ),
+                    MessageLevel::Warning,
+                    MessageOutput::Stdout,
+                );
+            }
+        }
+    }
 
     //Calculate md5 hashes as keys for images
     let images: HashMap<String, Image> = images
@@ -781,8 +840,8 @@ fn main() {
     let app_config =
         fs::read_to_string(&args[1]).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
 
-    let mut app_config: Config =
-        serde_json::from_str(&app_config).unwrap_or_else(|e| panic!("Unable to parse config.json: {}", e));
+    let mut app_config: Config = serde_json::from_str(&app_config)
+        .unwrap_or_else(|e| panic!("Unable to parse config.json: {}", e));
     app_config.times.sort_unstable();
 
     //Parse systemd first to use it for further messages
