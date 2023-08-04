@@ -202,7 +202,7 @@ fn load_images(
                 }
             };
 
-            //Get json file from remtoe location
+            //Get json file from remote location
             let result = match client_media.get(&app_config.image_json).send() {
                 Ok(result) => result,
                 Err(err) => return Err(anyhow!(err).context("Unable to find json file with images (either local path or web address is wrong)")),
@@ -238,7 +238,7 @@ fn load_images(
 
     // Keep list of reported duplicates to avoid duplicate warnings
     let mut reported_duplicates = Vec::new();
-    for (_, (hash, location)) in images_hashes.iter().enumerate() {
+    for (hash, location) in images_hashes.iter() {
         let mut duplicate_counter = 0;
 
         // Iterate over all images with the same hash
@@ -357,6 +357,7 @@ fn load_images(
     if let Some(images_old) = images_old {
         let mut message_changed = 0;
         let mut alt_changed = 0;
+        let mut content_warning_changed = 0;
         for image in &images {
             if let Some(image_old) = images_old.get(image.0) {
                 if image_old.msg != image.1.msg {
@@ -364,6 +365,9 @@ fn load_images(
                 }
                 if image_old.alt != image.1.alt {
                     alt_changed += 1;
+                }
+                if image_old.content_warning != image.1.content_warning {
+                    content_warning_changed += 1;
                 }
             }
         }
@@ -377,6 +381,13 @@ fn load_images(
         if alt_changed > 0 {
             app_config.output_message(
                 &format!("Alt text changed for {} images", alt_changed),
+                MessageLevel::Notice,
+                MessageOutput::Stdout,
+            );
+        }
+        if content_warning_changed > 0 {
+            app_config.output_message(
+                &format!("Content warning changed for {} images", content_warning_changed),
                 MessageLevel::Notice,
                 MessageOutput::Stdout,
             );
