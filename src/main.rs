@@ -15,7 +15,7 @@ use std::{
 use rand::Rng;
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
-use chrono::{DateTime, Local, TimeZone, Utc};
+use chrono::{DateTime, Local, NaiveTime, TimeZone, Utc};
 
 use reqwest::blocking::multipart::{self, Part};
 use serde_json::Value;
@@ -387,7 +387,10 @@ fn load_images(
         }
         if content_warning_changed > 0 {
             app_config.output_message(
-                &format!("Content warning changed for {} images", content_warning_changed),
+                &format!(
+                    "Content warning changed for {} images",
+                    content_warning_changed
+                ),
                 MessageLevel::Notice,
                 MessageOutput::Stdout,
             );
@@ -421,7 +424,28 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
                 Some(new_date_time) => new_date_time,
                 None => {
                     if *hours <= 23 && *minutes <= 59 {
-                        config.output_message(&format!("Skipped time {}:{} because it doesn't exist due to Daylight Saving Time", hours, minutes), MessageLevel::Info, MessageOutput::Stdout);
+                        // Check if we need to show the information about skipped time or if it's no longer relevant
+                        let Some(time) = NaiveTime::from_hms_opt(*hours as u32, *minutes as u32, 0)
+                        else {
+                            // Could be panic here, but no reason to crash service just when trying to see if to print message (and this shouldn't happen anyway)
+                            #[rustfmt::skip]
+                            config.output_message(
+                                &format!( "Can't make time {}:{} while checking Daylight Saving Time", hours, minutes),
+                                MessageLevel::Warning,
+                                MessageOutput::Stdout,
+                            );
+                            continue;
+                        };
+                        if current_date > date_time.date()
+                            || (current_date == date_time.date() && time > date_time.time())
+                        {
+                            #[rustfmt::skip]
+                            config.output_message(
+                                &format!("Skipped time {}:{} because it doesn't exist due to Daylight Saving Time", hours, minutes),
+                                MessageLevel::Info,
+                                MessageOutput::Stdout
+                            );
+                        }
                         continue; //Hours and minutes are correct, but probably daylight saving time make the specific time not exist
                     }
                     config.panic_message(
@@ -448,7 +472,11 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
 fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, GetImageErrorLevel> {
     // Check if it is local image
     if let Some(image_path) = image_path.strip_prefix("file:") {
-        let Some(local_path) = local_path else { return Err(GetImageErrorLevel::Critical(anyhow!("Missing local path in configuration file"))) };
+        let Some(local_path) = local_path else {
+            return Err(GetImageErrorLevel::Critical(anyhow!(
+                "Missing local path in configuration file"
+            )));
+        };
         let local_path_struct = Path::new(local_path);
         let path = local_path_struct.join(image_path);
 
