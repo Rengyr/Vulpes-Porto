@@ -653,7 +653,20 @@ fn post_image<'a>(
 
    let part = Part::bytes(bytes).file_name("image");
 
-   let client = reqwest::blocking::Client::new();
+   let client = match reqwest::blocking::Client::builder()
+      .user_agent("VulpesPorto/".to_string() + version!() + " (" + GITHUB_LINK + ")")
+      .build()
+   {
+      Ok(client) => client,
+      Err(e) => {
+         app_config.output_message(
+            &format!("Unable to initialize client to post image to /api/v2/media: {:#}", e),
+            MessageLevel::Error,
+            MessageOutput::Stderr,
+         );
+         return Err(());
+      }
+   };
 
    //Construct request to upload image to mastodon and get media id
    let mut media_request = multipart::Form::new()
