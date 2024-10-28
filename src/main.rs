@@ -953,7 +953,7 @@ fn main() {
 
       //Check if it's time to post new image
       if next_time < Local::now()
-         || (failed_to_post && (Instant::now() - failed_to_post_time).as_secs() > 60 * 10)
+         || (failed_to_post && (Instant::now() - failed_to_post_time).as_secs() > 60 * 2) // Try again in 2 minutes if posting failed
       {
          //Try again after 10min if failed
          let image = post_image(&app_config, &images, &mut not_used_images);
