@@ -59,6 +59,7 @@ struct Config {
    local_path: Option<String>,
    use_syslog_style: Option<bool>,
    log_level: Option<MessageLevel>,
+   retry_time: Option<u64>, // Time in seconds to wait before retrying to post image
 }
 
 impl Config {
@@ -170,8 +171,7 @@ fn load_images(
    let images_json = match Path::new(&app_config.image_json).exists() {
       true => {
          // Allow to use "file:" prefix for local json file
-         let image_json_path =
-            app_config.image_json.strip_prefix("file:").unwrap_or(&app_config.image_json);
+         let image_json_path = app_config.image_json.strip_prefix("file:").unwrap_or(&app_config.image_json);
 
          //Load the json file from disk
          match fs::read_to_string(image_json_path) {
@@ -186,29 +186,24 @@ fn load_images(
          {
             Ok(client_media) => client_media,
             Err(err) => {
-               return Err(
-                  anyhow!(err)
-                     .context("Unable to make reqwest client for remote json file with images"),
-               );
+               return Err(anyhow!(err).context("Unable to make reqwest client for remote json file with images"));
             }
          };
 
          //Get json file from remote location
          let result = match client_media.get(&app_config.image_json).send() {
             Ok(result) => result,
-            Err(err) => return Err(anyhow!(err).context(
-               "Unable to find json file with images (either local path or web address is wrong)",
-            )),
+            Err(err) => {
+               return Err(
+                  anyhow!(err).context("Unable to find json file with images (either local path or web address is wrong)"),
+               )
+            }
          };
 
          //Parse remote file as text
          match result.text() {
             Ok(images_json) => images_json,
-            Err(err) => {
-               return Err(
-                  anyhow!(err).context("Unable parse web result of json file with images as text"),
-               )
-            }
+            Err(err) => return Err(anyhow!(err).context("Unable parse web result of json file with images as text")),
          }
       }
    };
@@ -220,10 +215,8 @@ fn load_images(
    };
 
    //Calculate md5 hashes as keys for duplicity check
-   let images_hashes: Vec<(String, String)> = images
-      .iter()
-      .map(|image| (format!("{:x}", md5::compute(&image.location)), image.location.clone()))
-      .collect();
+   let images_hashes: Vec<(String, String)> =
+      images.iter().map(|image| (format!("{:x}", md5::compute(&image.location)), image.location.clone())).collect();
 
    // Keep list of reported duplicates to avoid duplicate warnings
    let mut reported_duplicates = Vec::new();
@@ -231,9 +224,7 @@ fn load_images(
       let mut duplicate_counter = 0;
 
       // Iterate over all images with the same hash
-      for (index_duplicate, _) in
-         images_hashes.iter().enumerate().filter(|(_, (list_hash, _))| list_hash == hash)
-      {
+      for (index_duplicate, _) in images_hashes.iter().enumerate().filter(|(_, (list_hash, _))| list_hash == hash) {
          duplicate_counter += 1;
          if duplicate_counter > 1 {
             // If this hash has already been reported, skip it
@@ -254,19 +245,11 @@ fn load_images(
                + 1;
 
             // Get index for original image
-            let image_line = images_json
-               .split('\n')
-               .enumerate()
-               .find(|(_, line_string)| line_string.contains(location))
-               .unwrap()
-               .0
-               + 1;
+            let image_line =
+               images_json.split('\n').enumerate().find(|(_, line_string)| line_string.contains(location)).unwrap().0 + 1;
 
             app_config.output_message(
-               &format!(
-                  "Image at line {} is duplicate, first seen at line {} [{}]",
-                  duplicite_line, image_line, location
-               ),
+               &format!("Image at line {} is duplicate, first seen at line {} [{}]", duplicite_line, image_line, location),
                MessageLevel::Warning,
                MessageOutput::Stdout,
             );
@@ -275,10 +258,8 @@ fn load_images(
    }
 
    //Calculate md5 hashes as keys for images
-   let images: HashMap<String, Image> = images
-      .into_iter()
-      .map(|image| (format!("{:x}", md5::compute(&image.location)), image))
-      .collect();
+   let images: HashMap<String, Image> =
+      images.into_iter().map(|image| (format!("{:x}", md5::compute(&image.location)), image)).collect();
 
    //Add new images to unused list
    let mut new = 0;
@@ -289,11 +270,7 @@ fn load_images(
       }
    }
    if new > 0 {
-      app_config.output_message(
-         &format!("Added {} new images", new),
-         MessageLevel::Notice,
-         MessageOutput::Stdout,
-      );
+      app_config.output_message(&format!("Added {} new images", new), MessageLevel::Notice, MessageOutput::Stdout);
    }
 
    //Remove images that were removed from json from the unused list
@@ -400,31 +377,21 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
    loop {
       //Try all times in the config
       for (hours, minutes) in config.times.iter() {
-         let post_date_time = match current_date.and_hms_opt(
-            hours.to_owned() as u32,
-            minutes.to_owned() as u32,
-            0,
-         ) {
+         let post_date_time = match current_date.and_hms_opt(hours.to_owned() as u32, minutes.to_owned() as u32, 0) {
             Some(new_date_time) => new_date_time,
             None => {
                if *hours <= 23 && *minutes <= 59 {
                   // Check if we need to show the information about skipped time or if it's no longer relevant
-                  let Some(time) = NaiveTime::from_hms_opt(*hours as u32, *minutes as u32, 0)
-                  else {
+                  let Some(time) = NaiveTime::from_hms_opt(*hours as u32, *minutes as u32, 0) else {
                      // Could be panic here, but no reason to crash service just when trying to see if to print message (and this shouldn't happen anyway)
                      config.output_message(
-                        &format!(
-                           "Can't make time {}:{} while checking Daylight Saving Time",
-                           hours, minutes
-                        ),
+                        &format!("Can't make time {}:{} while checking Daylight Saving Time", hours, minutes),
                         MessageLevel::Warning,
                         MessageOutput::Stdout,
                      );
                      continue;
                   };
-                  if current_date > date_time.date()
-                     || (current_date == date_time.date() && time > date_time.time())
-                  {
+                  if current_date > date_time.date() || (current_date == date_time.date() && time > date_time.time()) {
                      config.output_message(
                         &format!("Skipped time {}:{} because it doesn't exist due to Daylight Saving Time", hours, minutes),
                         MessageLevel::Info,
@@ -434,10 +401,7 @@ fn get_next_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) -> Date
                   continue; //Hours and minutes are correct, but probably daylight saving time make the specific time not exist
                }
                config.panic_message(
-                  &format!(
-                     "Invalid hours or minutes in the configuration: hours: {}, minutes: {}",
-                     hours, minutes
-                  ),
+                  &format!("Invalid hours or minutes in the configuration: hours: {}, minutes: {}", hours, minutes),
                   MessageLevel::Critical,
                );
             }
@@ -458,9 +422,7 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
    // Check if it is local image
    if let Some(image_path) = image_path.strip_prefix("file:") {
       let Some(local_path) = local_path else {
-         return Err(GetImageErrorLevel::Critical(anyhow!(
-            "Missing local path in configuration file"
-         )));
+         return Err(GetImageErrorLevel::Critical(anyhow!("Missing local path in configuration file")));
       };
       let local_path_struct = Path::new(local_path);
       let path = local_path_struct.join(image_path);
@@ -469,9 +431,7 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
       if !path.exists() {
          return match path.into_os_string().into_string() {
             Ok(path) => Err(GetImageErrorLevel::Critical(anyhow!("Local path is wrong: {}", path))),
-            Err(_) => {
-               Err(GetImageErrorLevel::Critical(anyhow!("Not correct OS path for: {}", image_path)))
-            }
+            Err(_) => Err(GetImageErrorLevel::Critical(anyhow!("Not correct OS path for: {}", image_path))),
          };
       }
 
@@ -507,23 +467,13 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
       let mut bytes: Vec<u8> = Vec::new();
       let mut file = match File::open(path) {
          Ok(file) => file,
-         Err(error) => {
-            return Err(GetImageErrorLevel::Critical(anyhow!(
-               "Can't open image {}: {:#}",
-               image_path,
-               error
-            )))
-         }
+         Err(error) => return Err(GetImageErrorLevel::Critical(anyhow!("Can't open image {}: {:#}", image_path, error))),
       };
 
       match file.read_to_end(&mut bytes) {
          Ok(_) => {}
          Err(error) => {
-            return Err(GetImageErrorLevel::Normal(anyhow!(
-               "Error during reading image {}: {:+}",
-               image_path,
-               error
-            )));
+            return Err(GetImageErrorLevel::Normal(anyhow!("Error during reading image {}: {:+}", image_path, error)));
          }
       };
 
@@ -537,10 +487,7 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
       {
          Ok(client_media) => client_media,
          Err(e) => {
-            return Err(GetImageErrorLevel::Normal(anyhow!(
-               "Unable to initialize client to fetch remote images: {:#}",
-               e
-            )));
+            return Err(GetImageErrorLevel::Normal(anyhow!("Unable to initialize client to fetch remote images: {:#}", e)));
          }
       };
 
@@ -548,11 +495,7 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
       let response = match client_media.get(image_path).send() {
          Ok(response) => response,
          Err(e) => {
-            return Err(GetImageErrorLevel::Normal(anyhow!(
-               "Unable to get remote image {}: {:#}",
-               image_path,
-               e
-            )));
+            return Err(GetImageErrorLevel::Normal(anyhow!("Unable to get remote image {}: {:#}", image_path, e)));
          }
       };
 
@@ -566,21 +509,15 @@ fn get_image(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, G
 
       match response.bytes() {
          Ok(bytes) => Ok(bytes.into_iter().collect()),
-         Err(error) => Err(GetImageErrorLevel::Normal(anyhow!(
-            "Response from remote image {} request is wrong: {:#}",
-            image_path,
-            error
-         ))),
+         Err(error) => {
+            Err(GetImageErrorLevel::Normal(anyhow!("Response from remote image {} request is wrong: {:#}", image_path, error)))
+         }
       }
    }
 }
 
 ///Send request for new media post to Mastodon server and return error if there is any.
-fn post_image<'a>(
-   app_config: &Config,
-   images: &'a HashMap<String, Image>,
-   images_db: &mut ImageDB,
-) -> Result<&'a Image, ()> {
+fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, images_db: &mut ImageDB) -> Result<&'a Image, ()> {
    let rng = &mut rand::thread_rng();
 
    //Get random hash from unused if there is any else from random deck
@@ -588,17 +525,9 @@ fn post_image<'a>(
       true => {
          if images_db.random_deck.is_empty() {
             images_db.random_deck.append(&mut images_db.used.to_vec());
-            app_config.output_message(
-               "Random deck was shuffled",
-               MessageLevel::Debug,
-               MessageOutput::Stdout,
-            );
+            app_config.output_message("Random deck was shuffled", MessageLevel::Debug, MessageOutput::Stdout);
          }
-         images_db
-            .random_deck
-            .get(rng.gen_range(0..images_db.random_deck.len()))
-            .unwrap()
-            .to_owned()
+         images_db.random_deck.get(rng.gen_range(0..images_db.random_deck.len())).unwrap().to_owned()
       }
       false => images_db.unused.get(rng.gen_range(0..images_db.unused.len())).unwrap().to_owned(),
    };
@@ -625,18 +554,13 @@ fn post_image<'a>(
             GetImageErrorLevel::Normal(message) => message,
             GetImageErrorLevel::Critical(message) => message,
          };
-         app_config.output_message(
-            &format!("{:#}", error_message),
-            MessageLevel::Error,
-            MessageOutput::Stderr,
-         );
+         app_config.output_message(&format!("{:#}", error_message), MessageLevel::Error, MessageOutput::Stderr);
 
          //Remove image for critical errors
          if matches!(error, GetImageErrorLevel::Critical { .. }) {
             match images_db.unused.is_empty() {
                true => {
-                  let pos =
-                     images_db.random_deck.iter().position(|hash| hash == &image_hash).unwrap();
+                  let pos = images_db.random_deck.iter().position(|hash| hash == &image_hash).unwrap();
                   images_db.random_deck.remove(pos);
                }
                false => {
@@ -687,10 +611,7 @@ fn post_image<'a>(
       Ok(response) => response,
       Err(e) => {
          app_config.output_message(
-            &format!(
-               "Unable to post image to /api/v2/media for image {}.\nError: {:#}",
-               image.location, e
-            ),
+            &format!("Unable to post image to /api/v2/media for image {}.\nError: {:#}", image.location, e),
             MessageLevel::Error,
             MessageOutput::Stderr,
          );
@@ -700,19 +621,11 @@ fn post_image<'a>(
 
    if !response.status().is_success() {
       app_config.output_message(
-         &format!(
-            "Wrong status from media api: {} for image {}",
-            response.status(),
-            image.location
-         ),
+         &format!("Wrong status from media api: {} for image {}", response.status(), image.location),
          MessageLevel::Error,
          MessageOutput::Stderr,
       );
-      app_config.output_message(
-         &format!("Response: {}", response.text().unwrap()),
-         MessageLevel::Error,
-         MessageOutput::Stderr,
-      );
+      app_config.output_message(&format!("Response: {}", response.text().unwrap()), MessageLevel::Error, MessageOutput::Stderr);
       return Err(());
    }
 
@@ -776,10 +689,7 @@ fn post_image<'a>(
       Ok(response) => response,
       Err(e) => {
          app_config.output_message(
-            &format!(
-               "Unable to post image to /api/v1/statuses for image {}.\nError: {:#}",
-               image.location, e
-            ),
+            &format!("Unable to post image to /api/v1/statuses for image {}.\nError: {:#}", image.location, e),
             MessageLevel::Error,
             MessageOutput::Stderr,
          );
@@ -789,11 +699,7 @@ fn post_image<'a>(
 
    if !response.status().is_success() {
       app_config.output_message(
-         &format!(
-            "Wrong status from statuses api: {} for image {}",
-            response.status(),
-            image.location
-         ),
+         &format!("Wrong status from statuses api: {} for image {}", response.status(), image.location),
          MessageLevel::Error,
          MessageOutput::Stderr,
       );
@@ -841,11 +747,10 @@ fn main() {
    }
 
    //Load bot configuration
-   let app_config =
-      fs::read_to_string(&args[1]).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
+   let app_config = fs::read_to_string(&args[1]).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
 
-   let mut app_config: Config = serde_json::from_str(&app_config)
-      .unwrap_or_else(|e| panic!("Unable to parse config.json: {}", e));
+   let mut app_config: Config =
+      serde_json::from_str(&app_config).unwrap_or_else(|e| panic!("Unable to parse config.json: {}", e));
    app_config.times.sort_unstable();
 
    //Parse systemd first to use it for further messages
@@ -868,10 +773,7 @@ fn main() {
          match serde_json::from_reader(reader) {
             Ok(res) => res,
             Err(e) => {
-               app_config.panic_message(
-                  &format!("Unable to parse not_used_images_log.\nError: {:#}", e),
-                  MessageLevel::Critical,
-               );
+               app_config.panic_message(&format!("Unable to parse not_used_images_log.\nError: {:#}", e), MessageLevel::Critical);
             }
          }
       }
@@ -886,8 +788,7 @@ fn main() {
    let mut images = match load_images(&app_config, &mut not_used_images, None) {
       Ok(images) => images,
       Err(e) => {
-         app_config
-            .panic_message(&format!("Unable to load images.\nError: {:#}", e), MessageLevel::Error);
+         app_config.panic_message(&format!("Unable to load images.\nError: {:#}", e), MessageLevel::Error);
       }
    };
    save_images_ids(&mut not_used_images, &app_config);
@@ -914,17 +815,9 @@ fn main() {
    let mut next_time = get_next_time(current_time, &app_config);
    let mut image_config_refresh_time = Instant::now() + time::Duration::from_secs(60 * 60);
 
+   app_config.output_message(&format!("Next image will be at {}", next_time), MessageLevel::Info, MessageOutput::Stdout);
    app_config.output_message(
-      &format!("Next image will be at {}", next_time),
-      MessageLevel::Info,
-      MessageOutput::Stdout,
-   );
-   app_config.output_message(
-      &format!(
-         "{}/{} images left",
-         not_used_images.unused.len(),
-         not_used_images.unused.len() + not_used_images.used.len()
-      ),
+      &format!("{}/{} images left", not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len()),
       MessageLevel::Info,
       MessageOutput::Stdout,
    );
@@ -953,7 +846,7 @@ fn main() {
 
       //Check if it's time to post new image
       if next_time < Local::now()
-         || (failed_to_post && (Instant::now() - failed_to_post_time).as_secs() > 60 * 2) // Try again in 2 minutes if posting failed
+         || (failed_to_post && (Instant::now() - failed_to_post_time).as_secs() > app_config.retry_time.unwrap_or(10 * 60))
       {
          //Try again after 10min if failed
          let image = post_image(&app_config, &images, &mut not_used_images);
@@ -961,12 +854,7 @@ fn main() {
 
          if let Ok(image) = image {
             app_config.output_message(
-               &format!(
-                  "Image {} posted at {}, next at {}",
-                  image.location,
-                  Local::now(),
-                  next_time
-               ),
+               &format!("Image {} posted at {}, next at {}", image.location, Local::now(), next_time),
                MessageLevel::Info,
                MessageOutput::Stdout,
             );
