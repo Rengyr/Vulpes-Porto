@@ -1,7 +1,16 @@
 #[macro_use]
 extern crate version;
 
+mod structures;
+
+use structures::{Config, GetImageErrorLevel, Image, ImageDB, MessageLevel, MessageOutput};
+
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Local, NaiveTime, TimeZone, Utc};
 use core::time;
+use rand::Rng;
+use reqwest::blocking::multipart::{self, Part};
+use serde_json::Value;
 use std::{
    collections::HashMap,
    env,
@@ -12,154 +21,7 @@ use std::{
    time::Instant,
 };
 
-use rand::Rng;
-use serde::{de::Error, Deserialize, Deserializer, Serialize};
-
-use chrono::{DateTime, Local, NaiveTime, TimeZone, Utc};
-
-use reqwest::blocking::multipart::{self, Part};
-use serde_json::Value;
-
-use anyhow::{anyhow, Result};
-
 static GITHUB_LINK: &str = "https://github.com/Rengyr/Vulpes-Porto";
-
-enum GetImageErrorLevel {
-   Normal(anyhow::Error),
-   Critical(anyhow::Error),
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq, Ord, Eq)]
-enum MessageLevel {
-   Emergency = 0,
-   Alert = 1,
-   Critical = 2,
-   Error = 3,
-   Warning = 4,
-   Notice = 5,
-   Info = 6,
-   Debug = 7,
-}
-
-enum MessageOutput {
-   Stdout,
-   Stderr,
-}
-
-///Structure holding configuration of the bot
-#[derive(Serialize, Deserialize, Debug)]
-struct Config {
-   server: String,
-   token: String,
-   image_json: String,
-   not_used_images_log_location: String,
-   #[serde(deserialize_with = "from_string_time")]
-   times: Vec<(u8, u8)>,
-   tags: Option<String>,
-   local_path: Option<String>,
-   use_syslog_style: Option<bool>,
-   log_level: Option<MessageLevel>,
-   retry_time: Option<u64>, // Time in seconds to wait before retrying to post image
-}
-
-impl Config {
-   /// Function to print message with correct level, output and systemd prefix if needed
-   fn output_message(&self, message: &str, level: MessageLevel, output: MessageOutput) {
-      // Check if message level is enough to be outputted
-      if let Some(min_level) = self.log_level.as_ref() {
-         if &level > min_level {
-            return;
-         }
-      }
-
-      // First append systemd prefix if needed based on message level and then write to correct output
-      let message = match self.use_syslog_style {
-         Some(true) => {
-            let prefix = format!("<{}>", level as u8);
-            format!("{}{}", prefix, message)
-         }
-         _ => message.to_string(),
-      };
-
-      match output {
-         MessageOutput::Stdout => println!("{}", message),
-         MessageOutput::Stderr => eprintln!("{}", message),
-      };
-   }
-
-   /// Function to panic with correct systemd level if needed
-   fn panic_message(&self, message: &str, level: MessageLevel) -> ! {
-      // Append systemd prefix if needed based on message level and then panic
-      let message = match self.use_syslog_style {
-         Some(true) => {
-            let prefix = format!("<{}>", level as u8);
-            format!("{}{}", prefix, message)
-         }
-         _ => message.to_string(),
-      };
-      panic!("{}", message);
-   }
-}
-
-fn from_string_time<'de, D>(deserializer: D) -> Result<Vec<(u8, u8)>, D::Error>
-where
-   D: Deserializer<'de>,
-{
-   let s: Vec<&str> = Deserialize::deserialize(deserializer)?;
-
-   //Deserializing time to tuple with hours and minutes
-   s.into_iter()
-      .map(|time| -> Result<(u8, u8), <D as Deserializer>::Error> {
-         let mut time_split = time.split(':');
-         let hours = time_split
-            .next()
-            .ok_or_else(|| D::Error::custom("missing hours"))
-            .and_then(|h| h.parse::<u8>().map_err(|_| D::Error::custom("can't parse hours")));
-         let minutes = time_split
-            .next()
-            .ok_or_else(|| D::Error::custom("missing minutes"))
-            .and_then(|h| h.parse::<u8>().map_err(|_| D::Error::custom("can't parse minutes")));
-         match (hours, minutes) {
-            (Ok(hours), Ok(minutes)) => {
-               if hours > 23 {
-                  Err(D::Error::custom("hours must be less than 23"))
-               } else if minutes > 60 {
-                  Err(D::Error::custom("minutes must be less than 60"))
-               } else {
-                  Ok((hours, minutes))
-               }
-            }
-            (Err(hours), Ok(_)) => Err(hours),
-            (Ok(_), Err(minutes)) => Err(minutes),
-            _ => Err(D::Error::custom("invalid time")),
-         }
-      })
-      .collect::<Result<Vec<(u8, u8)>, D::Error>>()
-}
-
-///Structure containing info about the image
-#[derive(Serialize, Deserialize, Debug)]
-struct Image {
-   msg: Option<String>,             //Optional message
-   alt: Option<String>,             //Optional alt text for image
-   content_warning: Option<String>, //Optional content warning
-   location: String,                //Link to hosted image
-}
-
-///Structure containing info about current used and unused images
-#[derive(Serialize, Deserialize, Debug)]
-struct ImageDB {
-   used: Vec<String>,
-   unused: Vec<String>,
-   random_deck: Vec<String>,
-}
-
-impl ImageDB {
-   ///Check if the hash is in the used or unused list
-   pub fn contains(&self, hash: &String) -> bool {
-      self.used.contains(hash) || self.unused.contains(hash)
-   }
-}
 
 ///From link to json load new image and parse the results to ImageDB structure. Returns Hashmap with images with keys of md5 hashes or returns Error.
 fn load_images(
@@ -662,11 +524,11 @@ fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, image
    let mut message = image.msg.clone().unwrap_or_default();
 
    //If tags are specified then add tags after new line if message is not empty
-   if let Some(tags) = app_config.tags.as_ref() {
-      if !message.is_empty() && !tags.is_empty() {
+   if !app_config.tags.is_empty() {
+      if !message.is_empty() {
          message += "\n";
       }
-      message += tags;
+      message += &app_config.tags;
    }
 
    //Add message to the posted image if there is something
@@ -845,8 +707,7 @@ fn main() {
       }
 
       //Check if it's time to post new image
-      if next_time < Local::now()
-         || (failed_to_post && (Instant::now() - failed_to_post_time).as_secs() > app_config.retry_time.unwrap_or(10 * 60))
+      if next_time < Local::now() || (failed_to_post && (Instant::now() - failed_to_post_time).as_secs() > app_config.retry_time)
       {
          //Try again after 10min if failed
          let image = post_image(&app_config, &images, &mut not_used_images);
