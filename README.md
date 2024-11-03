@@ -1,5 +1,5 @@
 Vulpes Porto\
-Dominik 'Rengyr' Kosík, <mail@rengyr.eu>
+Rengyr, <mail@rengyr.eu>
 
 [![Project status](https://github.com/Rengyr/Vulpes-Porto/actions/workflows/rust.yml/badge.svg)](https://github.com/Rengyr/Vulpes-Porto/actions/workflows/rust.yml)
 

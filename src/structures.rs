@@ -1,3 +1,5 @@
+use std::{fs::File, io::Write};
+
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
 pub enum GetImageErrorLevel {
@@ -140,6 +142,12 @@ pub struct Image {
    pub location: String,
 }
 
+impl Image {
+   pub fn get_hash(&self) -> String {
+      format!("{:x}", md5::compute(&self.location))
+   }
+}
+
 ///Structure containing info about current used and unused images
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ImageDB {
@@ -157,4 +165,20 @@ impl ImageDB {
    pub fn contains(&self, hash: &String) -> bool {
       self.used.contains(hash) || self.unused.contains(hash)
    }
+}
+
+///Save used and unused images to file.
+pub fn save_images_ids(image_db: &mut ImageDB, app_config: &Config) {
+   match File::create(app_config.not_used_images_log_location.clone()) {
+      Ok(mut file) => {
+         file.write_all(serde_json::to_string(&image_db).unwrap().as_bytes()).unwrap();
+      }
+      Err(e) => {
+         app_config.output_message(
+            &format!("Unable to create not_used_images_log_location.\nError: {:#}", e),
+            MessageLevel::Error,
+            MessageOutput::Stderr,
+         );
+      }
+   };
 }
