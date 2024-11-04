@@ -10,7 +10,7 @@ use reqwest::{
 };
 use serde_json::Value;
 
-use crate::structures::{Config, Image, MessageLevel, MessageOutput};
+use crate::structures::{Config, Image, MessageLevel, MessageOutput, StatusVisibility};
 
 static GITHUB_LINK: &str = "https://github.com/Rengyr/Vulpes-Porto";
 
@@ -172,6 +172,10 @@ pub fn create_new_status_with_image(client: &Client, app_config: &Config, media_
    let mut status_request = multipart::Form::new()
       // Image id
       .text("media_ids[]", media_id);
+
+   if app_config.status_visibility != StatusVisibility::Default {
+      status_request = status_request.text("visibility", app_config.status_visibility.to_string());
+   }
 
    //Get the message on the image or default ""
    let mut message = image.msg.clone().unwrap_or_default();

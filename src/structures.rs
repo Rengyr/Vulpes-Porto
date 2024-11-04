@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write};
+use std::{fmt::{Display, Formatter}, fs::File, io::Write};
 
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
@@ -24,8 +24,30 @@ pub enum MessageOutput {
    Stderr,
 }
 
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum StatusVisibility {
+   Public,
+   Unlisted,
+   Private,
+   Direct,
+   Default,
+}
+
+impl Display for StatusVisibility {
+   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+      match self {
+         StatusVisibility::Public => write!(f, "public"),
+         StatusVisibility::Unlisted => write!(f, "unlisted"),
+         StatusVisibility::Private => write!(f, "private"),
+         StatusVisibility::Direct => write!(f, "direct"),
+         StatusVisibility::Default => write!(f, ""),
+      }
+   }
+}
+
 ///Structure holding configuration of the bot
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct Config {
    pub server: String,
    pub token: String,
@@ -41,6 +63,8 @@ pub struct Config {
    pub log_level: MessageLevel,
    #[serde(default = "default_retry_time")]
    pub retry_time: u64,
+   #[serde(default = "default_status_visibility")]
+   pub status_visibility: StatusVisibility,
 }
 
 fn default_log_level() -> MessageLevel {
@@ -49,6 +73,10 @@ fn default_log_level() -> MessageLevel {
 
 fn default_retry_time() -> u64 {
    10 * 60 // 10 minutes
+}
+
+fn default_status_visibility() -> StatusVisibility {
+   StatusVisibility::Default
 }
 
 impl Config {
