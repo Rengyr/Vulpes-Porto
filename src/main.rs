@@ -5,7 +5,7 @@ mod api;
 mod structures;
 
 use api::{create_new_status_with_image, get_client, get_image_sources, upload_image_to_media_api};
-use structures::{save_images_ids, Config, GetImageErrorLevel, Image, ImageDB, MessageLevel, MessageOutput};
+use structures::{save_images_ids, Config, GetImageErrorLevel, Image, ImageDB, MessageLevel, MessageOutput, StatusVisibility};
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local, NaiveTime, TimeZone, Utc};
@@ -332,9 +332,12 @@ fn get_image_data_remote(remote_image_path: &str) -> Result<Vec<u8>, GetImageErr
    }
 }
 
-///Send request for new media post to Mastodon server and return error if there is any.
-fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, images_db: &mut ImageDB) -> Result<&'a Image, ()> {
-   let image = get_image_to_post(app_config, images, images_db)?;
+/// Send request for new media post to the server and return error if there is any
+/// * `app_config` - Configuration of the bot
+/// * `images` - Hashmap with images
+/// * `internal_db` - Database of images
+fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, internal_db: &mut ImageDB) -> Result<&'a Image, ()> {
+   let image = get_image_to_post(app_config, images, internal_db)?;
    let image_hash = image.get_hash();
 
    let image_bytes = get_image_data(app_config.local_path.as_ref(), &image.location);
@@ -350,15 +353,15 @@ fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, image
 
       //Remove image for critical errors
       if matches!(error, GetImageErrorLevel::Critical { .. }) {
-         match images_db.unused.is_empty() {
+         match internal_db.unused.is_empty() {
             true => {
-               let pos = images_db.random_deck.iter().position(|hash| hash == &image_hash).unwrap();
-               images_db.random_deck.remove(pos);
+               let pos = internal_db.random_deck.iter().position(|hash| hash == &image_hash).unwrap();
+               internal_db.random_deck.remove(pos);
             }
             false => {
-               let pos = images_db.unused.iter().position(|hash| hash == &image_hash).unwrap();
-               images_db.unused.remove(pos);
-               images_db.used.push(image_hash.to_owned());
+               let pos = internal_db.unused.iter().position(|hash| hash == &image_hash).unwrap();
+               internal_db.unused.remove(pos);
+               internal_db.used.push(image_hash.to_owned());
             }
          };
       }
@@ -379,24 +382,32 @@ fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, image
 
    let media_id: String = upload_image_to_media_api(&client, app_config, image_bytes, image)?;
 
-   create_new_status_with_image(&client, app_config, media_id, image)?;
+   let (status_visiblity, new_vis_sequence) = get_status_visibility(app_config, internal_db);
+
+   create_new_status_with_image(&client, app_config, media_id, image, status_visiblity)?;
 
    //Remove hash from the lists
-   match images_db.unused.is_empty() {
+   match internal_db.unused.is_empty() {
       true => {
-         let pos = images_db.random_deck.iter().position(|hash| hash == &image_hash).unwrap();
-         images_db.random_deck.remove(pos);
+         let pos = internal_db.random_deck.iter().position(|hash| hash == &image_hash).unwrap();
+         internal_db.random_deck.remove(pos);
       }
       false => {
-         let pos = images_db.unused.iter().position(|hash| hash == &image_hash).unwrap();
-         images_db.unused.remove(pos);
-         images_db.used.push(image_hash.to_owned());
+         let pos = internal_db.unused.iter().position(|hash| hash == &image_hash).unwrap();
+         internal_db.unused.remove(pos);
+         internal_db.used.push(image_hash.to_owned());
       }
    };
+
+   internal_db.visiblity_sequence = new_vis_sequence;
 
    Ok(image)
 }
 
+/// Select image to post from database of images
+/// * `app_config` - Configuration of the bot
+/// * `images` - Hashmap with images
+/// * `images_db` - Database of images
 fn get_image_to_post<'a>(
    app_config: &Config,
    images: &'a HashMap<String, Image>,
@@ -434,6 +445,22 @@ fn get_image_to_post<'a>(
    }
 }
 
+/// Get status visibility based on the configuration and internal database
+/// * `app_config` - Configuration of the bot
+/// * `internal_db` - Database of images
+///
+/// Returns tuple with status visibility and new visibility sequence if posting succeeded
+fn get_status_visibility(app_config: &Config, internal_db: &ImageDB) -> (StatusVisibility, usize) {
+   match &app_config.status_visibility_sequence {
+      None => (app_config.status_visibility.clone(), 0),
+      Some(sequence) => {
+         let visibility = sequence[internal_db.visiblity_sequence % sequence.len()].clone();
+         let new_sequence_number = (internal_db.visiblity_sequence + 1) % sequence.len();
+         (visibility, new_sequence_number)
+      }
+   }
+}
+
 fn main() {
    let args: Vec<String> = env::args().collect();
 
@@ -463,17 +490,18 @@ fn main() {
    }
 
    //Load used and unused list of images
-   let mut not_used_images = match File::open(app_config.not_used_images_log_location.clone()) {
+   let mut internal_db = match File::open(app_config.internal_database.clone()) {
       Ok(file) => {
          let reader = BufReader::new(file);
          match serde_json::from_reader(reader) {
             Ok(res) => res,
             Err(e) => {
-               app_config.panic_message(&format!("Unable to parse not_used_images_log.\nError: {:#}", e), MessageLevel::Critical);
+               app_config
+                  .panic_message(&format!("Unable to parse internal_database file.\nError: {:#}", e), MessageLevel::Critical);
             }
          }
       }
-      Err(_) => ImageDB { used: Vec::new(), unused: Vec::new(), random_deck: Vec::new() },
+      Err(_) => ImageDB { used: Vec::new(), unused: Vec::new(), random_deck: Vec::new(), visiblity_sequence: 0 },
    };
 
    if app_config.times.is_empty() {
@@ -481,19 +509,19 @@ fn main() {
    }
 
    //Check for images in image json
-   let mut images = match load_image_paths(&app_config, &mut not_used_images, None) {
+   let mut images = match load_image_paths(&app_config, &mut internal_db, None) {
       Ok(images) => images,
       Err(e) => {
          app_config.panic_message(&format!("Unable to load images.\nError: {:#}", e), MessageLevel::Error);
       }
    };
-   save_images_ids(&mut not_used_images, &app_config);
+   save_images_ids(&mut internal_db, &app_config);
 
    //Parse additional arguments
    for arg in args.iter().skip(2) {
       //Print image on start
       if arg == "--now" {
-         let image = post_image(&app_config, &images, &mut not_used_images);
+         let image = post_image(&app_config, &images, &mut internal_db);
          if let Ok(image) = image {
             app_config.output_message(
                &format!("Image {} posted with --now at {}", image.location, Local::now()),
@@ -501,7 +529,7 @@ fn main() {
                MessageOutput::Stdout,
             );
 
-            save_images_ids(&mut not_used_images, &app_config);
+            save_images_ids(&mut internal_db, &app_config);
          }
       }
    }
@@ -513,7 +541,7 @@ fn main() {
 
    app_config.output_message(&format!("Next image will be at {}", next_time), MessageLevel::Info, MessageOutput::Stdout);
    app_config.output_message(
-      &format!("{}/{} images left", not_used_images.unused.len(), not_used_images.unused.len() + not_used_images.used.len()),
+      &format!("{}/{} images left", internal_db.unused.len(), internal_db.unused.len() + internal_db.used.len()),
       MessageLevel::Info,
       MessageOutput::Stdout,
    );
@@ -525,7 +553,7 @@ fn main() {
       //Check if there are changes in image json
       if image_config_refresh_time < Instant::now() {
          image_config_refresh_time = Instant::now() + time::Duration::from_secs(60 * 60); //Every hour
-         images = match load_image_paths(&app_config, &mut not_used_images, Some(&images)) {
+         images = match load_image_paths(&app_config, &mut internal_db, Some(&images)) {
             Ok(images_new) => images_new,
             Err(e) => {
                app_config.output_message(
@@ -537,13 +565,13 @@ fn main() {
             }
          };
 
-         save_images_ids(&mut not_used_images, &app_config);
+         save_images_ids(&mut internal_db, &app_config);
       }
 
       //Check if it's time to post new image or retry posting image
       if next_time < Local::now() || (failed_to_post && (Instant::now() - failed_to_post_time).as_secs() > app_config.retry_time)
       {
-         let image = post_image(&app_config, &images, &mut not_used_images);
+         let image = post_image(&app_config, &images, &mut internal_db);
          next_time = get_next_post_time(next_time, &app_config);
 
          if let Ok(image) = image {
@@ -563,17 +591,13 @@ fn main() {
                MessageOutput::Stdout,
             );
             app_config.output_message(
-               &format!(
-                  "{}/{} images left",
-                  not_used_images.unused.len(),
-                  not_used_images.unused.len() + not_used_images.used.len()
-               ),
+               &format!("{}/{} images left", internal_db.unused.len(), internal_db.unused.len() + internal_db.used.len()),
                MessageLevel::Info,
                MessageOutput::Stdout,
             );
 
             failed_to_post = false;
-            save_images_ids(&mut not_used_images, &app_config);
+            save_images_ids(&mut internal_db, &app_config);
          } else {
             failed_to_post = true;
             failed_to_post_time = Instant::now();

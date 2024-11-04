@@ -1,4 +1,8 @@
-use std::{fmt::{Display, Formatter}, fs::File, io::Write};
+use std::{
+   fmt::{Display, Formatter},
+   fs::File,
+   io::Write,
+};
 
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
@@ -24,7 +28,7 @@ pub enum MessageOutput {
    Stderr,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum StatusVisibility {
    Public,
@@ -52,7 +56,8 @@ pub struct Config {
    pub server: String,
    pub token: String,
    pub image_json: String,
-   pub not_used_images_log_location: String,
+   #[serde(alias = "not_used_images_log_location")]
+   pub internal_database: String,
    #[serde(deserialize_with = "from_string_time")]
    pub times: Vec<(u8, u8)>,
    #[serde(default)]
@@ -65,6 +70,8 @@ pub struct Config {
    pub retry_time: u64,
    #[serde(default = "default_status_visibility")]
    pub status_visibility: StatusVisibility,
+   #[serde(default, deserialize_with = "from_status_visibility_sequence")]
+   pub status_visibility_sequence: Option<Vec<StatusVisibility>>,
 }
 
 fn default_log_level() -> MessageLevel {
@@ -157,6 +164,42 @@ where
       .collect::<Result<Vec<(u8, u8)>, D::Error>>()
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum VisibilitySequenceItem {
+   Simple(StatusVisibility),
+   Pair(StatusVisibility, usize),
+}
+
+fn from_status_visibility_sequence<'de, D>(deserializer: D) -> Result<Option<Vec<StatusVisibility>>, D::Error>
+where
+   D: Deserializer<'de>,
+{
+   let deserialized: Result<Vec<VisibilitySequenceItem>, _> = Deserialize::deserialize(deserializer);
+
+   match deserialized {
+      Ok(seq) => {
+         let mut simple_seq = Vec::new();
+         for item in seq {
+            match item {
+               VisibilitySequenceItem::Simple(visibility) => simple_seq.push(visibility),
+               VisibilitySequenceItem::Pair(visibility, amount) => {
+                  for _ in 0..amount {
+                     simple_seq.push(visibility.clone());
+                  }
+               }
+            }
+         }
+         Ok(Some(simple_seq))
+      }
+      Err(_) => Err(D::Error::custom(
+         "Wrong format of status_visibility_sequence. \
+              Allowed simple array or array with tuples of visibility and amount, e.g: \
+              [\"default\", \"default\", \"public\"] or [[\"default\", 2], [\"public\",1]]",
+      )),
+   }
+}
+
 ///Structure containing info about the image
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Image {
@@ -185,6 +228,8 @@ pub struct ImageDB {
    pub unused: Vec<String>,
    // List of random deck for picking images after all were used
    pub random_deck: Vec<String>,
+   #[serde(default)]
+   pub visiblity_sequence: usize,
 }
 
 impl ImageDB {
@@ -196,10 +241,10 @@ impl ImageDB {
 }
 
 ///Save used and unused images to file.
-pub fn save_images_ids(image_db: &mut ImageDB, app_config: &Config) {
-   match File::create(app_config.not_used_images_log_location.clone()) {
+pub fn save_images_ids(internal_db: &mut ImageDB, app_config: &Config) {
+   match File::create(app_config.internal_database.clone()) {
       Ok(mut file) => {
-         file.write_all(serde_json::to_string(&image_db).unwrap().as_bytes()).unwrap();
+         file.write_all(serde_json::to_string(&internal_db).unwrap().as_bytes()).unwrap();
       }
       Err(e) => {
          app_config.output_message(

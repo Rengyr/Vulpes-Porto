@@ -167,14 +167,21 @@ pub fn upload_image_to_media_api(
 /// * `app_config` - Application configuration
 /// * `media_id` - Media id of uploaded image from media api
 /// * `image` - Image structure
-pub fn create_new_status_with_image(client: &Client, app_config: &Config, media_id: String, image: &Image) -> Result<(), ()> {
+/// * `visibility` - Visibility of the post
+pub fn create_new_status_with_image(
+   client: &Client,
+   app_config: &Config,
+   media_id: String,
+   image: &Image,
+   visibility: StatusVisibility,
+) -> Result<(), ()> {
    //Construct request to post new post to mastodon with the image
    let mut status_request = multipart::Form::new()
       // Image id
       .text("media_ids[]", media_id);
 
-   if app_config.status_visibility != StatusVisibility::Default {
-      status_request = status_request.text("visibility", app_config.status_visibility.to_string());
+   if visibility != StatusVisibility::Default {
+      status_request = status_request.text("visibility", visibility.to_string());
    }
 
    //Get the message on the image or default ""

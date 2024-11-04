@@ -3,11 +3,12 @@
 	"token": "BZohmwJu YOUR ACCOUN TOKEN MmQ50lTk8",
 	"image_json": "https://yourpage/sub/sources.json or local path to sources.json",
 	"times": ["8:00"],
-	"not_used_images_log_location": "./unused.log",
-	"tags": "#Bot  //optional setting",
-	"local_path": "./   //optional setting for local images",
+	"internal_database": "./vulpesporto.db",
+	"tags": "#Bot",  // optional setting
+	"local_path": "./",   // optional setting for local images
 	"log_level": "Info",
 	"use_syslog_style": true,
 	"retry_time": 600,
-	"status_visibility": "default   //possible values (default, public, unlisted, private, direct)"
+	"status_visibility": "default",   // possible values (default, public, unlisted, private, direct)
+	"status_visibility_sequence": ["public", ["unlisted", 9]]  // Simple sequence of status visibilities or pair with with amount of repetition
 }
