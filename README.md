@@ -15,7 +15,7 @@ Normal start:
 ./vulpes_porto ./config.json
 
 Start with posting one image immediately:
-./vulpes_porto ./config.json --now
+./vulpes_porto --now ./config.json
 ```
 
 Server side configuration example is in config.json. This file contains configuration for mastodon server, token of the bot, location of json with links of local or remote photos that will be described later, times when to post photos each day and location for file for tracking used and still unused photos.
