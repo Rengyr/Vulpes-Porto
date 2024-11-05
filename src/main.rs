@@ -31,7 +31,7 @@ fn load_image_paths(
    images_db: &mut ImageDB,
    images_old: Option<&HashMap<String, Image>>,
 ) -> Result<HashMap<String, Image>> {
-   let (images_json, parsed_images) = get_image_sources(&app_config.image_json)?;
+   let (images_json, parsed_images) = get_image_sources(&app_config.get_image_json_path())?;
 
    report_duplicate_source_image_locations(app_config, &images_json, &parsed_images);
 
@@ -505,11 +505,13 @@ fn main() {
    let config_path = args.config.unwrap_or(args.config_old.first().expect("Precondition were removed from code?").to_string());
 
    //Load bot configuration
-   let app_config = fs::read_to_string(config_path).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
+   let app_config = fs::read_to_string(&config_path).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
 
    let mut app_config: Config =
       serde_json::from_str(&app_config).unwrap_or_else(|e| panic!("Unable to parse config.json: {}", e));
    app_config.times.sort_unstable();
+
+   app_config.config_path = config_path;
 
    if args.systemd {
       app_config.use_syslog_style = Some(true);
@@ -521,7 +523,7 @@ fn main() {
    }
 
    //Load used and unused list of images
-   let mut internal_db = match File::open(app_config.internal_database.clone()) {
+   let mut internal_db = match File::open(app_config.get_internal_database_path()) {
       Ok(file) => {
          let reader = BufReader::new(file);
          match serde_json::from_reader(reader) {

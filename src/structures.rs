@@ -2,6 +2,7 @@ use std::{
    fmt::{Display, Formatter},
    fs::File,
    io::Write,
+   path::{Path, PathBuf},
 };
 
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
@@ -53,11 +54,13 @@ impl Display for StatusVisibility {
 ///Structure holding configuration of the bot
 #[derive(Deserialize, Debug)]
 pub struct Config {
+   #[serde(skip)]
+   pub config_path: String,
    pub server: String,
    pub token: String,
-   pub image_json: String,
+   image_json: String,
    #[serde(alias = "not_used_images_log_location")]
-   pub internal_database: String,
+   internal_database: String,
    #[serde(deserialize_with = "from_string_time")]
    pub times: Vec<(u8, u8)>,
    #[serde(default)]
@@ -200,6 +203,33 @@ where
    }
 }
 
+impl Config {
+   /// Get path to the database file relative from the config file
+   pub fn get_internal_database_path(&self) -> PathBuf {
+      let path = Path::new(&self.internal_database);
+      if path.is_absolute() {
+         path.to_path_buf()
+      } else {
+         Path::new(&self.config_path).parent().expect("Config path doesn't point to config?").join(path)
+      }
+   }
+
+   /// Get path to the image_json file relative from the config file
+   pub fn get_image_json_path(&self) -> String {
+      let path = Path::new(&self.image_json);
+      if path.is_absolute() {
+         path.to_string_lossy().to_string()
+      } else {
+         Path::new(&self.config_path)
+            .parent()
+            .expect("Config path doesn't point to config?")
+            .join(path)
+            .to_string_lossy()
+            .to_string()
+      }
+   }
+}
+
 ///Structure containing info about the image
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Image {
@@ -242,7 +272,7 @@ impl ImageDB {
 
 ///Save used and unused images to file.
 pub fn save_images_ids(internal_db: &mut ImageDB, app_config: &Config) {
-   match File::create(app_config.internal_database.clone()) {
+   match File::create(app_config.get_internal_database_path()) {
       Ok(mut file) => {
          file.write_all(serde_json::to_string(&internal_db).unwrap().as_bytes()).unwrap();
       }
