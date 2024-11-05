@@ -19,3 +19,4 @@ anyhow = "1.0.57"
 
 md5 = "0.7.0"
 version = "3.0.0"
+clap = { version = "4.5.20", features = ["derive"] }

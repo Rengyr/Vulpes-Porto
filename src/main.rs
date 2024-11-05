@@ -5,6 +5,7 @@ mod api;
 mod structures;
 
 use api::{create_new_status_with_image, get_client, get_image_sources, upload_image_to_media_api};
+use clap::{arg, command, CommandFactory, Parser};
 use structures::{save_images_ids, Config, GetImageErrorLevel, Image, ImageDB, MessageLevel, MessageOutput, StatusVisibility};
 
 use anyhow::{anyhow, Result};
@@ -13,10 +14,10 @@ use core::time;
 use rand::Rng;
 use std::{
    collections::{HashMap, HashSet},
-   env,
    fs::{self, File},
    io::{BufReader, Read},
    path::Path,
+   process::exit,
    thread,
    time::Instant,
 };
@@ -461,32 +462,62 @@ fn get_status_visibility(app_config: &Config, internal_db: &ImageDB) -> (StatusV
    }
 }
 
-fn main() {
-   let args: Vec<String> = env::args().collect();
+#[derive(Parser, Debug)]
+#[command(version, about = "Mastodon bot to post remotely hosted photos daily at set times")]
+struct Args {
+   #[arg(short, long, help = "Path to the configuration file")]
+   config: Option<String>,
 
-   if args.len() < 2 {
-      println!("Usage: {} <config.json> [--now]", args[0]);
-      return;
+   #[arg(short, long, action, help = "Post one image immediately at start and then follow schedule")]
+   now: bool,
+
+   #[arg(long, action, help = "Use systemd output style (deprecated)", hide = true)]
+   systemd: bool,
+
+   #[arg(trailing_var_arg = true, hide = true)]
+   config_old: Vec<String>,
+}
+
+fn main() {
+   let args = Args::parse();
+
+   if args.config.is_some() && !args.config_old.is_empty() {
+      eprintln!("You can't use both --config and positional argument for config file\n");
+      let mut cmd = Args::command();
+      let _ = cmd.print_help();
+      exit(1);
    }
 
+   if args.config_old.len() > 1 {
+      eprintln!("You can't use multiple positional arguments for config file\n");
+      let mut cmd = Args::command();
+      let _ = cmd.print_help();
+      exit(1);
+   }
+
+   if args.config.is_none() && args.config_old.is_empty() {
+      eprintln!("You have to provide config file\n");
+      let mut cmd = Args::command();
+      let _ = cmd.print_help();
+      exit(1);
+   }
+
+   let config_path = args.config.unwrap_or(args.config_old.first().expect("Precondition were removed from code?").to_string());
+
    //Load bot configuration
-   let app_config = fs::read_to_string(&args[1]).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
+   let app_config = fs::read_to_string(config_path).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
 
    let mut app_config: Config =
       serde_json::from_str(&app_config).unwrap_or_else(|e| panic!("Unable to parse config.json: {}", e));
    app_config.times.sort_unstable();
 
-   //Parse systemd first to use it for further messages
-   for arg in args.iter().skip(2) {
-      //Set systemd output style
-      if arg == "--systemd" {
-         app_config.use_syslog_style = Some(true);
-         app_config.output_message(
-            "Using --systemd is deprecated, use setting in configuration file instead",
-            MessageLevel::Notice,
-            MessageOutput::Stdout,
-         );
-      }
+   if args.systemd {
+      app_config.use_syslog_style = Some(true);
+      app_config.output_message(
+         "Using --systemd is deprecated, use setting in configuration file instead",
+         MessageLevel::Notice,
+         MessageOutput::Stdout,
+      );
    }
 
    //Load used and unused list of images
@@ -517,20 +548,16 @@ fn main() {
    };
    save_images_ids(&mut internal_db, &app_config);
 
-   //Parse additional arguments
-   for arg in args.iter().skip(2) {
-      //Print image on start
-      if arg == "--now" {
-         let image = post_image(&app_config, &images, &mut internal_db);
-         if let Ok(image) = image {
-            app_config.output_message(
-               &format!("Image {} posted with --now at {}", image.location, Local::now()),
-               MessageLevel::Info,
-               MessageOutput::Stdout,
-            );
+   if args.now {
+      let image = post_image(&app_config, &images, &mut internal_db);
+      if let Ok(image) = image {
+         app_config.output_message(
+            &format!("Image {} posted with --now at {}", image.location, Local::now()),
+            MessageLevel::Info,
+            MessageOutput::Stdout,
+         );
 
-            save_images_ids(&mut internal_db, &app_config);
-         }
+         save_images_ids(&mut internal_db, &app_config);
       }
    }
 
