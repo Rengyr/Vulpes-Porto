@@ -474,6 +474,9 @@ struct Args {
    #[arg(long, action, help = "Use systemd output style (deprecated)", hide = true)]
    systemd: bool,
 
+   #[arg(short = 'C', long, help = "Test if the configuration and images are correct", action)]
+   check: bool,
+
    #[arg(trailing_var_arg = true, hide = true)]
    config_old: Vec<String>,
 }
@@ -502,7 +505,8 @@ fn main() {
       exit(1);
    }
 
-   let config_path = args.config.unwrap_or(args.config_old.first().expect("Precondition were removed from code?").to_string());
+   let config_path =
+      args.config.unwrap_or_else(|| args.config_old.first().expect("Precondition were removed from code?").to_string());
 
    //Load bot configuration
    let app_config = fs::read_to_string(&config_path).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
@@ -548,6 +552,15 @@ fn main() {
          app_config.panic_message(&format!("Unable to load images.\nError: {:#}", e), MessageLevel::Error);
       }
    };
+
+   if args.check {
+      app_config.output_message("Configuration and images are correct", MessageLevel::Info, MessageOutput::Stdout);
+      if let Err(error) = api::check_connection(&app_config) {
+         app_config.panic_message(&format!("Error: {:#}", error), MessageLevel::Critical);
+      }
+      exit(0);
+   }
+
    save_images_ids(&mut internal_db, &app_config);
 
    if args.now {

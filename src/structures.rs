@@ -3,6 +3,7 @@ use std::{
    fs::File,
    io::Write,
    path::{Path, PathBuf},
+   process::exit,
 };
 
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
@@ -115,11 +116,11 @@ impl Config {
       };
    }
 
-   /// Function to panic with correct systemd level if needed
+   /// Function to print error and exit with error with correct systemd level if needed
    /// * `message` - Message to be panicked with
    /// * `level` - Level of the message
    pub fn panic_message(&self, message: &str, level: MessageLevel) -> ! {
-      // Append systemd prefix if needed based on message level and then panic
+      // Append systemd prefix if needed based on message level
       let message = match self.use_syslog_style {
          Some(true) => {
             let prefix = format!("<{}>", level as u8);
@@ -127,7 +128,8 @@ impl Config {
          }
          _ => message.to_string(),
       };
-      panic!("{}", message);
+      eprintln!("{}", message);
+      exit(1);
    }
 }
 

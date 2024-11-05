@@ -7,6 +7,7 @@ use reqwest::{
       Client,
    },
    header::HeaderMap,
+   StatusCode,
 };
 use serde_json::Value;
 
@@ -226,6 +227,61 @@ pub fn create_new_status_with_image(
          MessageOutput::Stderr,
       );
       return Err(());
+   }
+
+   Ok(())
+}
+
+/// Function to check connection to the server
+/// * `config` - Application configuration
+pub fn check_connection(config: &Config) -> Result<(), String> {
+   let client = match get_client(Some(&config.token)) {
+      Ok(client) => client,
+      Err(err) => {
+         return Err(format!("Unable to make reqwest client to check connection to server, error: {:#}", err));
+      }
+   };
+
+   // Check if server exists
+   let response = client.get(config.server.to_owned() + "/api/v1/instance").send();
+   match response {
+      Err(err) => {
+         return Err(format!("Unable to get instance from server {}, error: {}", config.server, err));
+      }
+      Ok(response) => {
+         if !response.status().is_success() {
+            return Err(format!("Unable to get instance from server {}, status: {}", config.server, response.status()));
+         }
+      }
+   }
+
+   // Check if token is valid for the account
+   let response = client.get(config.server.to_owned() + "/api/v1/accounts/verify_credentials").send();
+   match response {
+      Err(err) => {
+         return Err(format!("Unable to verify credentials on server {}, error: {}", config.server, err));
+      }
+      Ok(response) => {
+         if !response.status().is_success() {
+            if response.status() == StatusCode::UNAUTHORIZED {
+               return Err(format!(
+                  "Unable to verify credentials on server {}, status: {}. Check if token is correct",
+                  config.server,
+                  response.status()
+               ));
+            }
+            return Err(format!("Unable to verify credentials on server {}, status: {}", config.server, response.status()));
+         }
+
+         let body = response.text().expect("expected text body from /api/v1/accounts/verify_credentials");
+         let body_json: Value = serde_json::from_str(&body).expect("expected json body from /api/v1/accounts/verify_credentials");
+         let account = body_json["username"].as_str().expect("expected username in /api/v1/accounts/verify_credentials");
+         let bot = body_json["bot"].as_bool().expect("expected bot in /api/v1/accounts/verify_credentials");
+
+         if bot {
+            return Err(format!("Account {} is not marked as a bot on the server {}", account, config.server));
+         }
+      }
    }
 
    Ok(())
