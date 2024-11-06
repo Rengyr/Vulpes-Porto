@@ -234,7 +234,7 @@ pub fn create_new_status_with_image(
 
 /// Function to check connection to the server
 /// * `config` - Application configuration
-pub fn check_connection(config: &Config) -> Result<(), String> {
+pub fn check_connection(config: &Config) -> Result<Option<String>, String> {
    let client = match get_client(Some(&config.token)) {
       Ok(client) => client,
       Err(err) => {
@@ -279,10 +279,10 @@ pub fn check_connection(config: &Config) -> Result<(), String> {
          let bot = body_json["bot"].as_bool().expect("expected bot in /api/v1/accounts/verify_credentials");
 
          if bot {
-            return Err(format!("Account {} is not marked as a bot on the server {}", account, config.server));
+            return Ok(Some(format!("Account {} is not marked as a bot on the server {}", account, config.server)));
          }
       }
    }
 
-   Ok(())
+   Ok(None)
 }

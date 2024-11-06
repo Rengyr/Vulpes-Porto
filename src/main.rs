@@ -553,12 +553,28 @@ fn main() {
       }
    };
 
+   // Run checks
+   let check = api::check_connection(&app_config);
    if args.check {
       app_config.output_message("Configuration and images are correct", MessageLevel::Info, MessageOutput::Stdout);
-      if let Err(error) = api::check_connection(&app_config) {
-         app_config.panic_message(&format!("Error: {:#}", error), MessageLevel::Critical);
+      match check {
+         Ok(info) => {
+            if let Some(info) = info {
+               app_config.output_message(&info, MessageLevel::Info, MessageOutput::Stdout)
+            }
+            exit(0);
+         }
+         Err(error) => app_config.panic_message(&error, MessageLevel::Critical),
       }
-      exit(0);
+   } else {
+      match check {
+         Ok(info) => {
+            if let Some(info) = info {
+               app_config.output_message(&info, MessageLevel::Info, MessageOutput::Stdout)
+            }
+         }
+         Err(error) => app_config.output_message(&error, MessageLevel::Critical, MessageOutput::Stderr),
+      }
    }
 
    save_images_ids(&mut internal_db, &app_config);
