@@ -1,0 +1,35 @@
+# Instance address
+server = "https://botsin.space"
+
+# Token for the account
+token = "BZohmwJu YOUR ACCOUN TOKEN MmQ50lTk8"
+
+# Path to remote or local file with links (see readme)
+image_json = "https://yourpage/sub/sources.json or local path to sources.json"
+
+# Array with times for posting
+times = ["8:00", "16:00"]
+
+# Path defining where to store internal database
+internal_database = "./vulpesporto.db"
+
+# Optional tags for posts
+tags = "#Bot"
+
+# Required setting if using locally stored images, defines root folder for local images
+local_path = "./"
+
+# Limits which messages are logged
+log_level = "Info"
+
+# Use syslog style for logging
+use_syslog_style = true
+
+# Delay in seconds for retrying
+retry_time = 600
+
+# Set status visiblity by sequence that is repeated
+# Overrides status_visibility if squence is defined
+# Array of visibilities or pairs for simpler defining of multiple in row with same visiblity
+# e.g. 1 public post, 9 unlisted and then again 1 public, 9 unlisted, ...
+status_visibility_sequence = ["public", ["unlisted", 9]]

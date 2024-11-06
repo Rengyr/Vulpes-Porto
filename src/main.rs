@@ -18,6 +18,7 @@ use std::{
    io::{BufReader, Read},
    path::Path,
    process::exit,
+   sync::{atomic::AtomicBool, Arc},
    thread,
    time::Instant,
 };
@@ -509,10 +510,22 @@ fn main() {
       args.config.unwrap_or_else(|| args.config_old.first().expect("Precondition were removed from code?").to_string());
 
    //Load bot configuration
-   let app_config = fs::read_to_string(&config_path).unwrap_or_else(|_| panic!("Couldn't find config.json file"));
+   let config_file = config::Config::builder().add_source(config::File::with_name(&config_path)).build();
 
-   let mut app_config: Config =
-      serde_json::from_str(&app_config).unwrap_or_else(|e| panic!("Unable to parse config.json: {}", e));
+   let mut app_config: Config = match config_file {
+      Ok(config) => match config.try_deserialize() {
+         Ok(config) => config,
+         Err(e) => {
+            eprintln!("Unable to parse configuration file.\nError: {:#}", e);
+            exit(1);
+         }
+      },
+      Err(e) => {
+         eprintln!("Unable to load configuration file.\nError: {:#}", e);
+         exit(1);
+      }
+   };
+
    app_config.times.sort_unstable();
 
    app_config.config_path = config_path;

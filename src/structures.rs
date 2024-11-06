@@ -137,7 +137,7 @@ fn from_string_time<'de, D>(deserializer: D) -> Result<Vec<(u8, u8)>, D::Error>
 where
    D: Deserializer<'de>,
 {
-   let s: Vec<&str> = Deserialize::deserialize(deserializer)?;
+   let s: Vec<String> = Deserialize::deserialize(deserializer)?;
 
    // Deserializing time to tuple with hours and minutes
    s.into_iter()
