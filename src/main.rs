@@ -13,14 +13,7 @@ use chrono::{DateTime, Local, NaiveTime, TimeZone, Utc};
 use core::time;
 use rand::Rng;
 use std::{
-   collections::{HashMap, HashSet},
-   fs::{self, File},
-   io::{BufReader, Read},
-   path::Path,
-   process::exit,
-   sync::{atomic::AtomicBool, Arc},
-   thread,
-   time::Instant,
+   collections::{HashMap, HashSet}, fs::{File}, io::{BufReader, Read}, path::Path, process::exit, sync::{atomic::AtomicBool, Arc}, thread, time::Instant
 };
 
 /// From link to json load new image and parse the results to ImageDB structure. Returns Hashmap with images with keys of md5 hashes or returns Error.
@@ -513,13 +506,15 @@ fn main() {
    let config_file = config::Config::builder().add_source(config::File::with_name(&config_path)).build();
 
    let mut app_config: Config = match config_file {
-      Ok(config) => match config.try_deserialize() {
-         Ok(config) => config,
-         Err(e) => {
-            eprintln!("Unable to parse configuration file.\nError: {:#}", e);
-            exit(1);
+      Ok(config) => {
+         match config.try_deserialize() {
+            Ok(config) => config,
+            Err(e) => {
+               eprintln!("Unable to parse configuration file.\nError: {:#}", e);
+               exit(1);
+            }
          }
-      },
+      }
       Err(e) => {
          eprintln!("Unable to load configuration file.\nError: {:#}", e);
          exit(1);
@@ -605,10 +600,20 @@ fn main() {
       }
    }
 
+   // Register handler for SIGUSR1 signal to reload config on Unix systems
+   let reload_signal = Arc::new(AtomicBool::new(false));
+   #[cfg(not(windows))]
+   {
+      if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGUSR1, Arc::clone(&reload_signal))
+      {
+         app_config.output_message(&format!("Unable to register signal handler for config reload: {:#}", error), MessageLevel::Error, MessageOutput::Stderr);
+      }
+   }
+
    //Calculate next time for post and json refresh
    let current_time = Local::now();
    let mut next_time = get_next_post_time(current_time, &app_config);
-   let mut image_config_refresh_time = Instant::now() + time::Duration::from_secs(60 * 60);
+   let mut image_config_refresh_time = Instant::now() + time::Duration::from_secs(60 * 30);
 
    app_config.output_message(&format!("Next image will be at {}", next_time), MessageLevel::Info, MessageOutput::Stdout);
    app_config.output_message(
@@ -622,8 +627,9 @@ fn main() {
 
    loop {
       //Check if there are changes in image json
-      if image_config_refresh_time < Instant::now() {
-         image_config_refresh_time = Instant::now() + time::Duration::from_secs(60 * 60); //Every hour
+      if image_config_refresh_time < Instant::now() || reload_signal.load(std::sync::atomic::Ordering::Relaxed) {
+         image_config_refresh_time = Instant::now() + time::Duration::from_secs(60 * 30); // Reload images every 30 minutes
+         reload_signal.store(false, std::sync::atomic::Ordering::Relaxed);
          images = match load_image_paths(&app_config, &mut internal_db, Some(&images)) {
             Ok(images_new) => images_new,
             Err(e) => {

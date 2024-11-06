@@ -21,3 +21,4 @@ md5 = "0.7.0"
 version = "3.0.0"
 clap = { version = "4.5.20", features = ["derive"] }
 config = { version = "0.14.1", features = ["json", "toml", "yaml"] }
+signal-hook = { version = "0.3.17", default-features = false }
