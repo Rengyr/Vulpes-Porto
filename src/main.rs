@@ -13,7 +13,14 @@ use chrono::{DateTime, Local, NaiveTime, TimeZone, Utc};
 use core::time;
 use rand::Rng;
 use std::{
-   collections::{HashMap, HashSet}, fs::{File}, io::{BufReader, Read}, path::Path, process::exit, sync::{atomic::AtomicBool, Arc}, thread, time::Instant
+   collections::{HashMap, HashSet},
+   fs::File,
+   io::{BufReader, Read},
+   path::Path,
+   process::exit,
+   sync::{atomic::AtomicBool, Arc},
+   thread,
+   time::Instant,
 };
 
 /// From link to json load new image and parse the results to ImageDB structure. Returns Hashmap with images with keys of md5 hashes or returns Error.
@@ -222,13 +229,13 @@ fn get_next_post_time<Tz: TimeZone>(date_time: DateTime<Tz>, config: &Config) ->
 /// Get image data from local or remote based on the image path
 /// * `local_path` - Path to root folder
 /// * `image_path` - Path to the image from root folder
-fn get_image_data(local_path: Option<&String>, image_path: &str) -> Result<Vec<u8>, GetImageErrorLevel> {
+fn get_image_data(local_path: Option<&Path>, image_path: &str) -> Result<Vec<u8>, GetImageErrorLevel> {
    if let Some(image_path) = image_path.strip_prefix("file:") {
       // Fetch local image
       let Some(local_path) = local_path else {
          return Err(GetImageErrorLevel::Critical(anyhow!("Missing local path in configuration file")));
       };
-      get_image_data_local(Path::new(local_path), Path::new(image_path))
+      get_image_data_local(local_path, Path::new(image_path))
    } else {
       // Fetch remote image
       get_image_data_remote(image_path)
@@ -335,7 +342,7 @@ fn post_image<'a>(app_config: &Config, images: &'a HashMap<String, Image>, inter
    let image = get_image_to_post(app_config, images, internal_db)?;
    let image_hash = image.get_hash();
 
-   let image_bytes = get_image_data(app_config.local_path.as_ref(), &image.location);
+   let image_bytes = get_image_data(app_config.get_local_path().as_deref(), &image.location);
 
    // Check if image data was fetched correctly
    let Ok(image_bytes) = image_bytes else {
@@ -506,15 +513,13 @@ fn main() {
    let config_file = config::Config::builder().add_source(config::File::with_name(&config_path)).build();
 
    let mut app_config: Config = match config_file {
-      Ok(config) => {
-         match config.try_deserialize() {
-            Ok(config) => config,
-            Err(e) => {
-               eprintln!("Unable to parse configuration file.\nError: {:#}", e);
-               exit(1);
-            }
+      Ok(config) => match config.try_deserialize() {
+         Ok(config) => config,
+         Err(e) => {
+            eprintln!("Unable to parse configuration file.\nError: {:#}", e);
+            exit(1);
          }
-      }
+      },
       Err(e) => {
          eprintln!("Unable to load configuration file.\nError: {:#}", e);
          exit(1);
@@ -604,9 +609,12 @@ fn main() {
    let reload_signal = Arc::new(AtomicBool::new(false));
    #[cfg(not(windows))]
    {
-      if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGUSR1, Arc::clone(&reload_signal))
-      {
-         app_config.output_message(&format!("Unable to register signal handler for config reload: {:#}", error), MessageLevel::Error, MessageOutput::Stderr);
+      if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGUSR1, Arc::clone(&reload_signal)) {
+         app_config.output_message(
+            &format!("Unable to register signal handler for config reload: {:#}", error),
+            MessageLevel::Error,
+            MessageOutput::Stderr,
+         );
       }
    }
 

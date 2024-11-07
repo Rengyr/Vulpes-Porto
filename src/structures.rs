@@ -66,7 +66,7 @@ pub struct Config {
    pub times: Vec<(u8, u8)>,
    #[serde(default)]
    pub tags: String,
-   pub local_path: Option<String>,
+   local_path: Option<String>,
    pub use_syslog_style: Option<bool>,
    #[serde(default = "default_log_level")]
    pub log_level: MessageLevel,
@@ -130,6 +130,46 @@ impl Config {
       };
       eprintln!("{}", message);
       exit(1);
+   }
+
+   /// Get path to the database file relative from the config file
+   pub fn get_internal_database_path(&self) -> PathBuf {
+      let path = Path::new(&self.internal_database);
+      if path.is_absolute() {
+         path.to_path_buf()
+      } else {
+         Path::new(&self.config_path).parent().expect("Config path doesn't point to config?").join(path)
+      }
+   }
+
+   /// Get path to the image_json file relative from the config file
+   pub fn get_image_json_path(&self) -> String {
+      let path = Path::new(&self.image_json);
+      if path.is_absolute() {
+         path.to_string_lossy().to_string()
+      } else {
+         Path::new(&self.config_path)
+            .parent()
+            .expect("Config path doesn't point to config?")
+            .join(path)
+            .to_string_lossy()
+            .to_string()
+      }
+   }
+
+   // Get path the local path relative of config file
+   pub fn get_local_path(&self) -> Option<PathBuf> {
+      match &self.local_path {
+         Some(local_path) => {
+            let path = Path::new(local_path);
+            if path.is_absolute() {
+               Some(path.to_path_buf())
+            } else {
+               Some(Path::new(&self.config_path).parent().expect("Config path doesn't point to config?").join(path))
+            }
+         }
+         None => None,
+      }
    }
 }
 
@@ -202,33 +242,6 @@ where
               Allowed simple array or array with tuples of visibility and amount, e.g: \
               [\"default\", \"default\", \"public\"] or [[\"default\", 2], [\"public\",1]]",
       )),
-   }
-}
-
-impl Config {
-   /// Get path to the database file relative from the config file
-   pub fn get_internal_database_path(&self) -> PathBuf {
-      let path = Path::new(&self.internal_database);
-      if path.is_absolute() {
-         path.to_path_buf()
-      } else {
-         Path::new(&self.config_path).parent().expect("Config path doesn't point to config?").join(path)
-      }
-   }
-
-   /// Get path to the image_json file relative from the config file
-   pub fn get_image_json_path(&self) -> String {
-      let path = Path::new(&self.image_json);
-      if path.is_absolute() {
-         path.to_string_lossy().to_string()
-      } else {
-         Path::new(&self.config_path)
-            .parent()
-            .expect("Config path doesn't point to config?")
-            .join(path)
-            .to_string_lossy()
-            .to_string()
-      }
    }
 }
 
