@@ -1,0 +1,24 @@
+[
+	{
+		"msg": "Augsburg Zoo, Germany",
+		"location": "https://example.com/sources/IMG_1978.JPG"
+	},
+	{
+		"location": "https://example.com/fennecbot/sources/IMG_1955.JPG"
+	},
+	{
+		"msg": "Augsburg Zoo, Germany",
+		"location": "https://example.com/fennecbot/sources/0001.jpg",
+		"alt": "Fennec sitting on a sand dune"
+	},
+	{
+		"msg": "Somewhere on field, Germany",
+		"location": "https://example.com/fennec/sources/0002.jpg",
+		"alt": "Fennec sitting on a grass",
+		"content_warning": "Dangerously beautiful fox"
+	},
+	{
+		"msg": "Augsburg Zoo, Germany",
+		"location": "file:fox.jpg"
+	}
+]
