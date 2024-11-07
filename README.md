@@ -3,28 +3,34 @@ Rengyr, <mail@rengyr.eu>
 
 [![Project status](https://github.com/Rengyr/Vulpes-Porto/actions/workflows/rust.yml/badge.svg)](https://github.com/Rengyr/Vulpes-Porto/actions/workflows/rust.yml)
 
-Mastodon bot to post remotely hosted photos daily at set times. The bot will prioritize images that weren't yet posted. In case of exhaustion of new photos the bot will post random photo from the pool.
+Mastodon (works on GoToSocial as well !) bot to post remotely hosted photos daily at set times. The bot will prioritize images that weren't yet posted. In case of exhaustion of new photos the bot will post random photo from the pool.
 
-The bot takes one mandatory argument which is the location of the configuration json file and this needs to be first argument. The bot supports two optional options:
+### Running the bot
 
-`--now` that will cause the bot to post one image on start-up and then continue based on the schedule in the configuration json file
+The bot takes one mandatory argument (--config, -c) which is the location of the configuration json file. The bot supports optional options:
+
+`--now, -n` that will cause the bot to post one image on start-up and then continue based on the schedule in the configuration json file
+
+`--check, -c` that will check whether configuration file and token is valid and exit after
 
 Example of starting bot:
 ```
 Normal start:
-./vulpes_porto ./config.json
+./vulpes_porto --config ./config_example.json
 
 Start with posting one image immediately:
-./vulpes_porto --now ./config.json
+./vulpes_porto --config ./config_example.json --now
 ```
 
-Server side configuration example is in config.json. This file contains configuration for mastodon server, token of the bot, location of json with links of local or remote photos that will be described later, times when to post photos each day and location for file for tracking used and still unused photos.
+### Configuration file
 
-In the server side configuration file syslog style errors and error level can be set.
+Server side configuration example is in config_example.toml (json and yaml format is as well supported). Fields of this configuration file are described inside of the example configuration files.
 
-Json file with links to images has following structure: list of records where each record has "location" which is a link to the remotely hosted photo or local photo. Each record can have optional message that will get posted with the photo, optional alternative text for the photo and optional content warning.
+### Image sources file
 
-Using local photos requires prefix "file:" in the "location" field in the json. Using local photos as well requires to have setup "local_path" in server side configuration file (see config.json example).
+Json file with links to images has following structure: list of records where each record has "location" which is a link to the remotely hosted photo or local photo. Each record can have optional message that will get posted with the photo, optional alt text for the photo, and optional content warning.
+
+Using photos from local filesystem requires prefix "file:" in the "location" field in the json. Using local photos as well requires to have setup "local_path" in server side configuration file (see config_example.toml example).
 
 Example of json structure:
 ```
@@ -54,5 +60,5 @@ Example of json structure:
 ]
 ```
 
-Example of mastodon account that is using Vulpes Porto:\
-[@toomanyfoxes@botsin.space](https://botsin.space/@toomanyfoxes)
+Example of GoToSocial account that is using Vulpes Porto:\
+[@toomanyfoxes@icy.arcticfluff.eu](https://icy.arcticfluff.eu/@toomanyfoxes)
